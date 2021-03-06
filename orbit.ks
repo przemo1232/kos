@@ -2,9 +2,9 @@
 // this is just a prototype
 // staging relies on tagging fuel tanks that are supposed to be empty on stage "0", "1", "2" etc
 // this script does not handle igniting any engines before releasing launch clamps
-// higher profile parameter means shallower ascent (it has to be bigger than 0), higher values work better with higher TWRs
+// higher profile parameter means shallower ascent (it has to be bigger than 0)
 
-// REWRITE THE CIRCULARIZATION FUNCTION AND ADD NON ATMOSPHERIC PROFILES
+// ADD NON ATMOSPHERIC PROFILES
 
 local function main
 {
@@ -41,11 +41,9 @@ local function main
   local phase is 0.
   local finished is false.
   local CurrentStage is 0.
-  local CircPID is list(height, 0, 0.001, 0, 0.001, 0, 0.001, 0, 0). // TargetHeight, PID values and multipliers, last P value, last time
-  local pitchPID is list(TargetPitch, 0, 5, 0, 0.2, 0, 5, 0, 0, 0). // TargetPitch, PID values and multipliers, last P value, last time, last I value
-  local CurrentSpeed is 0.
-  local TargetSpeed is 0.
-  local trigger is false.
+  local UpSpeed is 0.
+  local CircPID is list(Upspeed, 0, 1, 0, 1, 0, 1, 0, 0, false). // Upspeed, PID values and multipliers, last P value, last time, trigger
+  local pitchPID is list(TargetPitch, 0, 5, 0, 0.25, 0, 2, 0, 0, 0). // TargetPitch, PID values and multipliers, last P value, last time, last I value
   local gravity is 0.
   local acceleration is 0.
   lock throttle to flight[6].
@@ -61,7 +59,8 @@ local function main
       print "Current stage: " + CurrentStage at(0, 0).
     if missionTime > 0
       set CurrentStage to Staging(CurrentStage).
-    print "Acceleration: " + acceleration * flight[6] at(0, 3).
+    print "Acceleration: " + round(acceleration * flight[6], 2) at(0, 3).
+    print "Phase: " + phase at(0, terminal:height - 1).
     // end updates
     if phase > 0
     {
@@ -85,30 +84,13 @@ local function main
     }
     if phase = 4
     {
-      set CurrentSpeed to sqrt(body:mu * (2 / (body:radius + apoapsis) - 1 / orbit:semimajoraxis)).
-      set TargetSpeed to sqrt(body:mu / (body:radius + apoapsis)).
-      print "Current speed: " + CurrentSpeed at(0, 1).
-      print "Target speed: " + TargetSpeed at(0, 2).
-      print "Pitch: " + flight[1] at(0, 4).
-      print "Time to Ap: " + eta:apoapsis at(0, 5).
-      local temp is acceleration.
-      if temp > 0
-        print "Time to burn: " + (eta:apoapsis - ((TargetSpeed - CurrentSpeed) / temp) / 2) at(0, 6).
-      if acceleration > 0
-        if (TargetSpeed - CurrentSpeed) / acceleration >= eta:apoapsis * 2
-          set trigger to true.
-      if trigger
-      {
-        print "Throttle: " + flight[6] at(0, 7).
-        set phase to Circularization(flight, circPID).
-      }
+      set phase to Circularization(flight, height, acceleration, CircPID).
     }
     if phase = -1
     {
       set flight[6] to 0.
       set finished to true.
     }
-    print "Phase: " + phase at(0, terminal:height - 1).
     wait 0.
   }
   print "Current apoapsis: " + apoapsis at(0, 11).
@@ -119,26 +101,23 @@ local function main
 local function Staging // auto staging based on numbered fuel tanks
 {
   parameter x.
-  if x >= 0
+  if x >= 0 and ship:partsdubbed(x:tostring):length > 0
   {
-    if ship:partsdubbed(x:tostring):length > 0
-    {
-      local ready is stage:ready.
-      for y in ship:partsdubbed(x:tostring)[0]:resources
-        if y:amount < 0.001 and y:name <> "ElectricCharge" and ready
-        {
-          stage.
-          set ready to false.
-          set x to x + 1.
-        }
-      if ready and ship:availablethrust = 0 // extra staging if needed
+    local ready is stage:ready.
+    for y in ship:partsdubbed(x:tostring)[0]:resources
+      if y:amount < 0.001 and y:name <> "ElectricCharge" and ready
+      {
         stage.
-    }
-    else
-    {
-      print "No more predefined stages" at(0, terminal:height - 3).
-      set x to -1.
-    }
+        set ready to false.
+        set x to x + 1.
+      }
+    if ready and ship:availablethrust = 0 // extra staging if needed
+      stage.
+  }
+  else
+  {
+    print "No more predefined stages" at(0, terminal:height - 3).
+    set x to -1.
   }
   return x.
 }
@@ -171,17 +150,18 @@ local function AtmosphericFlight // steering while in atmosphere
   local temp is altitude.
   local CurrentTime is missionTime.
   local output is 90.
+  local vector is arcSin(verticalSpeed / ship:velocity:surface:mag).
   set pitchPID[0] to 90 - arcTan(flight[2] * temp / sqrt((body:atm:height + flight[7]) ^ 2 - temp ^ 2)).
-  set pitchPID[1] to pitchPID[0] - arcSin(verticalSpeed / ship:velocity:surface:mag).
+  set pitchPID[1] to pitchPID[0] - vector.
   print "Target: " + pitchPID[0] at(0, 12).
   if ship:bounds:bottomaltradar > flight[9]
   {
-    print "Vector: " + arcSin(verticalSpeed / ship:velocity:surface:mag) at(0, 13).
+    print "Vector: " + vector at(0, 13).
     if pitchPID[8] > 0 and CurrentTime > pitchPID[8] + 0.02
     {
       set pitchPID[3] to pitchPID[3] + (pitchPID[1] + pitchPID[7]) / 2 * (CurrentTime - pitchPID[8]).
       if abs(pitchPID[3]) < abs(pitchPID[9])
-        set pitchPID[3] to pitchPID[3] * (1 - 0.2 * (CurrentTime - pitchPID[8])).
+        set pitchPID[3] to pitchPID[3] * (1 - 0.05 * (CurrentTime - pitchPID[8])).
       set pitchPID[5] to (pitchPID[1] - pitchPID[7]) / (CurrentTime - pitchPID[8]).
       set pitchPID[8] to CurrentTime.
       set pitchPID[9] to pitchPID[3].
@@ -193,12 +173,16 @@ local function AtmosphericFlight // steering while in atmosphere
       set flight[1] to 0.
     else if output > 90
       set flight[1] to 90.
+    else if output > flight[1] + 10
+      set flight[1] to vector + 10.
+    else if output < flight[1] - 10
+      set flight[1] to vector - 10.
     else
       set flight[1] to output.
   }
-  if ship:velocity:surface:mag > 100 and body:atm:altitudepressure(altitude) > 0.0005
+  if body:atm:altitudepressure(altitude) > 0.0005 and flight[8] > 0
   {
-    if flight[8] > 0
+    if altitude > body:atm:height / 10
     {
       if 1 + (output - pitchPID[0]) * 0.1 > 1 / flight[8] * 2
         set flight[6] to 1 / flight[8] * 2.
@@ -207,14 +191,11 @@ local function AtmosphericFlight // steering while in atmosphere
       else
         set flight[6] to 1 + (output - pitchPID[0]) * 0.1.
     }
-  }
-  else
-  {
-    if flight[8] > 0
+    else 
       set flight[6] to 1 / flight[8] * 2.
-    if body:atm:altitudepressure(altitude) < 0.0005
-      return 2.
   }
+  else if body:atm:altitudepressure(altitude) < 0.0005
+    return 2.
   set pitchPID[7] to pitchPID[1].
   print "Pitch: " + flight[1] at(0, 4).
   print "Proportional: " + (pitchPID[1] * pitchPID[2]) at(0, 8).
@@ -263,13 +244,13 @@ local function Direction // azimuth control
 
 local function PostAtmosphericFlight
 {
-  parameter flight, height, phase.
+  parameter flight, TargetHeight, phase.
   set flight[1] to 0.
-  if apoapsis >= 0.9 * height
-    set flight[6] to 1 - ((apoapsis - 0.9 * height) / (0.1 * height)) * 0.5.
+  if apoapsis >= 0.9 * TargetHeight
+    set flight[6] to 1 - (5 * apoapsis / TargetHeight - 4.5).
   else
     set flight[6] to 1.
-  if apoapsis >= height
+  if apoapsis >= TargetHeight
   {
     set flight[6] to 0.
     if altitude < body:atm:height
@@ -291,37 +272,60 @@ local function ApRaise
 }
 
 local function Circularization // finishing the orbit
-{
-  parameter flight, circPID.
+{ // Upspeed, PID values and multipliers, last P value, last time, trigger
+  parameter flight, height, acceleration, circPID.
   local CurrentTime is missionTime.
-  set circPID[1] to circPID[0] - apoapsis.
-  if circPID[8] > 0
+  local CurrentSpeed is sqrt(body:mu * (2 / (body:radius + apoapsis) - 1 / orbit:semimajoraxis)).
+  local TargetSpeed is sqrt(body:mu / (body:radius + apoapsis)).
+  if periapsis > 0.9 * height
+    set flight[6] to 1 / flight[8] / 2.
+  if acceleration > 0 and (TargetSpeed - CurrentSpeed) / acceleration >= eta:apoapsis * 2
   {
-    set circPID[3] to circPID[3] + (circPID[1] + circPID[7]) / 2 * (CurrentTime - circPID[8]).
-    set circPID[5] to (circPID[1] - circPID[7]) / (CurrentTime - circPID[8]).
+    set circPID[9] to true.
+    if periapsis < 0.9 * height
+      set flight[6] to 1.
   }
-  local output is circPID[1] * circPID[2] + circPID[3] * circPID[4] + circPID[5] * circPID[6].
-  if abs(output) <= 90 
-    set flight[1] to output.
-  else if output > 0
-    set flight[1] to 90.
+  else if acceleration > 0 and (TargetSpeed - CurrentSpeed) / acceleration <= eta:apoapsis * 1.5 and verticalSpeed > 0.1 and periapsis < 0.99 * height
+  {
+    set circPID[9] to false.
+    set flight[6] to 0.
+  }
+  if circPID[9] = false
+  {
+    set flight[1] to 0.
+    set circPID[1] to 0.
+    set circPID[5] to 0.
+  }
   else
-    set flight[1] to -90.
-  set circPID[7] to circPID[1].
-  set circPID[8] to CurrentTime.
-  set flight[6] to 0.5 + (circPID[0] - periapsis) / circPID[0].
-  print "Proportional: " + (circPID[1] * circPID[2]) at(0, 8).
-  print "Integral: " + (circPID[3] * circPID[4]) at(0, 9).
-  print "Derivative: " + (circPID[5] * circPID[6]) at(0, 10).
-  if periapsis > 0.99 * apoapsis or (periapsis > body:atm:height and apoapsis > 2 * circPID[0])
+  {
+    local VerticalAcc is vxcl(up:vector, velocity:orbit):mag ^ 2 / (body:radius + altitude) - body:mu / (body:radius + altitude) ^ 2.
+    set circPID[1] to arcSin(VerticalAcc / acceleration).
+    set circPID[5] to -verticalSpeed.
+    local output is circPID[1] * circPID[2] + circPID[5] * circPID[6].
+    if output < 0
+      set flight[1] to 0.
+    else if output > 90
+      set flight[1] to 90.
+    else
+      set flight[1] to output.
+    print "Output: " + output at(0, 8).
+    print "Proportional: " + circPID[1] at(0, 9).
+    print "Derivative: " + circPID[5] at(0, 10).
+  }
+  if periapsis > 0.99 * height and (eta:apoapsis < 3 / 4 * orbit:period and eta:apoapsis > orbit:period / 4)
     return -1.
   return 4.
 }
+
 parameter height is 0, inclination is 200, StartTurn is 0, profile is 4.
-if inclination = 200
+if not (status = "landed" or status = "prelaunch")
+  print "Vessel is not landed".
+else if inclination = 200
 {
-  print "Use this script with parameters: altitude [m], inclination [degrees]".
-  print "Optional parameters: StartTurn [m](0), profile(4, atmosphere only)".
+  print "Use this script with parameters:".
+  print "altitude [m], inclination [degrees]".
+  print "Optional parameters:".
+  print "StartTurn [m](0), profile(4, atmosphere only)".
   print "Smallest inclination possible: " + ceiling(abs(latitude), 1).
 }
 else
