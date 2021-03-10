@@ -1,10 +1,8 @@
 // by przemo1232
-// this is just a prototype
-// staging relies on tagging fuel tanks that are supposed to be empty on stage "0", "1", "2" etc
-// this script does not handle igniting any engines before releasing launch clamps
-// higher profile parameter means shallower ascent (it has to be bigger than 0)
-
-// ADD NON ATMOSPHERIC PROFILES
+// basic navigation to orbit with a desired altitude and inclination
+// staging relies on tagging fuel tanks that are supposed to be empty when staging "0", "1", "2" etc
+// the script will not release launch clamps if there already is thrust
+// higher profile parameter means shallower ascent (it has to be bigger than 0 (4 works fine for me but you can experiment))
 
 local function main
 {
@@ -20,15 +18,11 @@ local function main
     print "Incorrect inclination value, minimal is" + ceiling(abs(latitude), 1).
     return.
   }
-  if profile <= 0
-  {
-    print "Incorrect profile".
-    return.
-  }
   // initialization
   sas off.
   local azimuth is 90.
   local pitch is 90.
+  local profile is 4.
   local TargetPitch is 90.
   local upwards is true.
   local lasttime is missionTime + 10.
@@ -42,26 +36,39 @@ local function main
   local finished is false.
   local CurrentStage is 0.
   local UpSpeed is 0.
-  local CircPID is list(Upspeed, 0, 1, 0, 1, 0, 1, 0, 0, false). // Upspeed, PID values and multipliers, last P value, last time, trigger
+  local CircPID is list(Upspeed, 0, 1, 0, 1, 0, 5, 0, 0, false). // Upspeed, PID values and multipliers, last P value, last time, trigger
   local pitchPID is list(TargetPitch, 0, 5, 0, 0.25, 0, 2, 0, 0, 0). // TargetPitch, PID values and multipliers, last P value, last time, last I value
   local gravity is 0.
   local acceleration is 0.
+  local curacc is 0.
   lock throttle to flight[6].
   lock steering to heading(flight[0], flight[1]).
   // finish initialization, begin main loop
   until finished
   {
     // updates
+    if flight[6] < 1
+      set curacc to acceleration * flight[6].
+    else
+      set curacc to acceleration.
     set gravity to body:mu / (body:radius + altitude) ^ 2.
     set acceleration to ship:availablethrust / ship:mass.
     set flight[8] to acceleration / gravity.
-    if CurrentStage >= 0
-      print "Current stage: " + CurrentStage at(0, 0).
     if missionTime > 0
       set CurrentStage to Staging(CurrentStage).
-    print "Acceleration: " + round(acceleration * flight[6], 2) at(0, 3).
-    print "Phase: " + phase at(0, terminal:height - 1).
-    // end updates
+    // readouts
+    if CurrentStage >= 0
+      print "Current stage: " + CurrentStage at(0, terminal:height - 1).
+    if flight[6] < 1
+      print "Throttle: " + round(flight[6], 2) + "   " at(0, 0).
+    else
+      print "Throttle: 1   " at(0, 0).
+    print "Acceleration: " + round(curacc, 2) + " m/s^2     " at(0, 1).
+    print "Pitch: " + round(flight[1], 1) + "   " at(0, 3).
+    print "Heading: " + round(flight[0], 1) + "   " at(0, 4).
+    print "Apoapsis: " + round(apoapsis, 0) + " m  " at(0, 6).
+    print "Periapsis: " + round(periapsis, 0) + " m  " at(0, 7).
+    // end readouts
     if phase > 0
     {
       Direction(flight, inclination).
@@ -74,8 +81,16 @@ local function main
     {
       set phase to AtmosphericFlight(flight, pitchPID).
     }
+    if phase = 1.5
+    {
+      if RCSToggle
+        rcs on.
+      set phase to NonAtmosphericAscent(flight, margin).
+    }
     if phase = 2
     {
+      if RCSToggle
+        rcs on.
       set phase to PostAtmosphericFlight(flight, body:atm:height + margin, phase).
     }
     if phase = 3
@@ -90,12 +105,13 @@ local function main
     {
       set flight[6] to 0.
       set finished to true.
+      clearscreen.
+      print "Orbit achieved, endling script.".
+      print "Periapsis: " + round(periapsis, 0).
+      print "Apoapsis: " + round(apoapsis, 0).
     }
     wait 0.
   }
-  print "Current apoapsis: " + apoapsis at(0, 11).
-  print "Current periapsis: " + periapsis at(0, 12).
-  print "Orbit achieved, ending script" at(0, 13).
 }
 
 local function Staging // auto staging based on numbered fuel tanks
@@ -116,7 +132,7 @@ local function Staging // auto staging based on numbered fuel tanks
   }
   else
   {
-    print "No more predefined stages" at(0, terminal:height - 3).
+    print "No more predefined stages" at(0, terminal:height - 1).
     set x to -1.
   }
   return x.
@@ -141,7 +157,9 @@ local function Countdown
     stage.
     wait until stage:ready.
   }
-  return 1.
+  if body:atm:exists
+    return 1.
+  return 1.5.
 }
 
 local function AtmosphericFlight // steering while in atmosphere
@@ -153,10 +171,10 @@ local function AtmosphericFlight // steering while in atmosphere
   local vector is arcSin(verticalSpeed / ship:velocity:surface:mag).
   set pitchPID[0] to 90 - arcTan(flight[2] * temp / sqrt((body:atm:height + flight[7]) ^ 2 - temp ^ 2)).
   set pitchPID[1] to pitchPID[0] - vector.
-  print "Target: " + pitchPID[0] at(0, 12).
   if ship:bounds:bottomaltradar > flight[9]
   {
-    print "Vector: " + vector at(0, 13).
+    if gear
+      toggle gear.
     if pitchPID[8] > 0 and CurrentTime > pitchPID[8] + 0.02
     {
       set pitchPID[3] to pitchPID[3] + (pitchPID[1] + pitchPID[7]) / 2 * (CurrentTime - pitchPID[8]).
@@ -197,14 +215,33 @@ local function AtmosphericFlight // steering while in atmosphere
   else if body:atm:altitudepressure(altitude) < 0.0005
     return 2.
   set pitchPID[7] to pitchPID[1].
-  print "Pitch: " + flight[1] at(0, 4).
-  print "Proportional: " + (pitchPID[1] * pitchPID[2]) at(0, 8).
-  print "Integral: " + (pitchPID[3] * pitchPID[4]) at(0, 9).
-  print "Derivative: " + (pitchPID[5] * pitchPID[6]) at(0, 10).
   if apoapsis < body:atm:height + flight[7] and altitude < body:atm:height
     return 1.
   else
     return 2.
+}
+
+local function NonAtmosphericAscent
+{
+  parameter flight, margin.
+  local radius is body:radius + altitude.
+  if flight[9] < 100
+    set flight[9] to 100.
+  if ship:bounds:bottomaltradar > flight[9] and flight[8] > 0
+  {
+    if gear
+      toggle gear.
+    set flight[6] to 1 / flight[8] * 10.
+    if flight[8] > 5
+      set flight[1] to arcSin((1.5 - (vxcl(up:vector, velocity:orbit):mag ^ 2 / radius) / (body:mu / radius ^ 2)) / 5).
+    else
+      set flight[1] to arcSin(1.5 / flight[8]).
+  }
+  else
+    set flight[6] to 1 / flight[8] * 2.
+  if apoapsis > margin
+    return 3.
+  return 1.5.
 }
 
 local function Direction // azimuth control
@@ -256,7 +293,10 @@ local function PostAtmosphericFlight
     if altitude < body:atm:height
       return 3.
     else
+    {
+      clearscreen.
       return 4.
+    }
   }
   return phase.
 }
@@ -265,9 +305,14 @@ local function ApRaise
 {
   parameter flight, height.
   if altitude >= body:atm:height
+  {
+    if flight[6] = 0
+      clearscreen.
     return PostAtmosphericFlight(flight, height, 3).
+  }
   if apoapsis <= body:atm:height + (flight[7] / 2)
     return PostAtmosphericFlight(flight, body:atm:height + flight[7], 2).
+  print "Coasting until above the atmosphere" at(0, 33).
   return 3.
 }
 
@@ -277,15 +322,13 @@ local function Circularization // finishing the orbit
   local CurrentTime is missionTime.
   local CurrentSpeed is sqrt(body:mu * (2 / (body:radius + apoapsis) - 1 / orbit:semimajoraxis)).
   local TargetSpeed is sqrt(body:mu / (body:radius + apoapsis)).
-  if periapsis > 0.9 * height
-    set flight[6] to 1 / flight[8] / 2.
-  if acceleration > 0 and (TargetSpeed - CurrentSpeed) / acceleration >= eta:apoapsis * 2
+  local BurnTime is (TargetSpeed - CurrentSpeed) / acceleration.
+  if acceleration > 0 and BurnTime >= eta:apoapsis * 2 and circPID[9] = false
   {
     set circPID[9] to true.
-    if periapsis < 0.9 * height
-      set flight[6] to 1.
+    clearscreen.
   }
-  else if acceleration > 0 and (TargetSpeed - CurrentSpeed) / acceleration <= eta:apoapsis * 1.5 and verticalSpeed > 0.1 and periapsis < 0.99 * height
+  else if acceleration > 0 and BurnTime <= eta:apoapsis * 1.5 and verticalSpeed > 0.1 and periapsis < 0.99 * height
   {
     set circPID[9] to false.
     set flight[6] to 0.
@@ -295,29 +338,36 @@ local function Circularization // finishing the orbit
     set flight[1] to 0.
     set circPID[1] to 0.
     set circPID[5] to 0.
+    print "Waiting for burn: " + round(eta:apoapsis - BurnTime / 2, 0) + " s  " at(0, 33).
   }
-  else
+  else if flight[8] > 0
   {
+    if (periapsis + body:radius) > 0.95 * (height + body:radius) and flight[8] > 0
+      set flight[6] to 1 / flight[8] / 2.
+    else
+      set flight[6] to 1 / flight[8] * 10.
     local VerticalAcc is vxcl(up:vector, velocity:orbit):mag ^ 2 / (body:radius + altitude) - body:mu / (body:radius + altitude) ^ 2.
     set circPID[1] to arcSin(VerticalAcc / acceleration).
-    set circPID[5] to -verticalSpeed.
+    if verticalSpeed > -2
+      set circPID[5] to -verticalSpeed.
+    else
+      set circPID[5] to 2.
     local output is circPID[1] * circPID[2] + circPID[5] * circPID[6].
     if output < 0
       set flight[1] to 0.
-    else if output > 90
-      set flight[1] to 90.
+    else if output > 45
+      set flight[1] to 45.
     else
       set flight[1] to output.
-    print "Output: " + output at(0, 8).
-    print "Proportional: " + circPID[1] at(0, 9).
-    print "Derivative: " + circPID[5] at(0, 10).
   }
   if periapsis > 0.99 * height and (eta:apoapsis < 3 / 4 * orbit:period and eta:apoapsis > orbit:period / 4)
     return -1.
   return 4.
 }
 
-parameter height is 0, inclination is 200, StartTurn is 0, profile is 4.
+parameter height is 0, inclination is 200, StartTurn is 0, RCSToggle is false.
+set terminal:height to 36.
+set terminal:width to 50.
 if not (status = "landed" or status = "prelaunch")
   print "Vessel is not landed".
 else if inclination = 200
@@ -325,7 +375,7 @@ else if inclination = 200
   print "Use this script with parameters:".
   print "altitude [m], inclination [degrees]".
   print "Optional parameters:".
-  print "StartTurn [m](0), profile(4, atmosphere only)".
+  print "StartTurn [m](0), rcs(false)".
   print "Smallest inclination possible: " + ceiling(abs(latitude), 1).
 }
 else
