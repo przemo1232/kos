@@ -109,6 +109,7 @@ local function main
       print "Orbit achieved, endling script.".
       print "Periapsis: " + round(periapsis, 0).
       print "Apoapsis: " + round(apoapsis, 0).
+      rcs off.
     }
     wait 0.
   }
