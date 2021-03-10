@@ -234,7 +234,7 @@ local function NonAtmosphericAscent
       toggle gear.
     set flight[6] to 1 / flight[8] * 10.
     if flight[8] > 5
-      set flight[1] to arcSin((1.5 - (vxcl(up:vector, velocity:orbit):mag ^ 2 / radius) / (body:mu / radius ^ 2)) / 5).
+      set flight[1] to arcSin((1.5 - (vxcl(up:vector, velocity:orbit):sqrmagnitude / radius) / (body:mu / radius ^ 2)) / 5).
     else
       set flight[1] to arcSin(1.5 / flight[8]).
   }
@@ -347,7 +347,7 @@ local function Circularization // finishing the orbit
       set flight[6] to 1 / flight[8] / 2.
     else
       set flight[6] to 1 / flight[8] * 10.
-    local VerticalAcc is vxcl(up:vector, velocity:orbit):mag ^ 2 / (body:radius + altitude) - body:mu / (body:radius + altitude) ^ 2.
+    local VerticalAcc is vxcl(up:vector, velocity:orbit):sqrmagnitude / (body:radius + altitude) - body:mu / (body:radius + altitude) ^ 2.
     set circPID[1] to arcSin(VerticalAcc / acceleration).
     if verticalSpeed > -2
       set circPID[5] to -verticalSpeed.
