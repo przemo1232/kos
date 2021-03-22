@@ -192,9 +192,9 @@ local function AtmosphericFlight // steering while in atmosphere
       set flight[1] to 0.
     else if output > 90
       set flight[1] to 90.
-    else if output > flight[1] + 10
-      set flight[1] to vector + 10.
-    else if output < flight[1] - 10
+    else if output > vector + 15
+      set flight[1] to vector + 15.
+    else if output < vector - 10
       set flight[1] to vector - 10.
     else
       set flight[1] to output.
