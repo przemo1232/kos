@@ -1,6 +1,6 @@
 // by przemo1232
 // basic navigation to orbit with a desired altitude and inclination
-// staging relies on tagging fuel tanks that are supposed to be empty when staging "0", "1", "2" etc
+// auto staging relies on tagged fuel tanks: when a tank tagged "0", "1", "2" etc is empty, the script stages until rocket has thrust
 // the script will not release launch clamps if there already is thrust
 // higher profile parameter means shallower ascent (it has to be bigger than 0 (4 works fine for me but you can experiment))
 
@@ -85,7 +85,7 @@ local function main
     {
       if RCSToggle
         rcs on.
-      set phase to NonAtmosphericAscent(flight, margin).
+      set phase to NonAtmosphericAscent(flight).
     }
     if phase = 2
     {
@@ -224,7 +224,7 @@ local function AtmosphericFlight // steering while in atmosphere
 
 local function NonAtmosphericAscent
 {
-  parameter flight, margin.
+  parameter flight.
   local radius is body:radius + altitude.
   if flight[9] < 100
     set flight[9] to 100.
@@ -240,7 +240,7 @@ local function NonAtmosphericAscent
   }
   else
     set flight[6] to 1 / flight[8] * 2.
-  if apoapsis > margin
+  if apoapsis > flight[7]
     return 3.
   return 1.5.
 }
@@ -271,9 +271,9 @@ local function Direction // azimuth control
   }
   if missionTime > flight[4] + 1 // whether i'm going north or south
   {
-    if flight[5] > latitude
+    if flight[5] > latitude or latitude > abs(inclination)
       set flight[3] to false.
-    if flight[5] < latitude
+    if flight[5] < latitude or latitude < -abs(inclination)
       set flight[3] to true.
     set flight[5] to latitude.
     set flight[4] to missionTime.
@@ -366,17 +366,19 @@ local function Circularization // finishing the orbit
   return 4.
 }
 
-parameter height is 0, inclination is 200, StartTurn is 0, RCSToggle is false.
+parameter height is 0, inclination is ceiling(abs(latitude), 1), StartTurn is 100, RCSToggle is false.
 set terminal:height to 36.
 set terminal:width to 50.
 if not (status = "landed" or status = "prelaunch")
   print "Vessel is not landed".
-else if inclination = 200
+else if height = 0
 {
   print "Use this script with parameters:".
-  print "altitude [m], inclination [degrees]".
+  print "Altitude [m]".
   print "Optional parameters:".
-  print "StartTurn [m](0), rcs(false)".
+  print "Inclination [degrees](current latitude)".
+  print "Turn start altitude [m](100)".
+  print "Toggle rcs above atmosphere(false)".
   print "Smallest inclination possible: " + ceiling(abs(latitude), 1).
 }
 else
