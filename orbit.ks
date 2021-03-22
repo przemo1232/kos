@@ -213,7 +213,7 @@ local function AtmosphericFlight // steering while in atmosphere
     else 
       set flight[6] to 1 / flight[8] * 2.
   }
-  else if body:atm:altitudepressure(altitude) < 0.0005
+  else if body:atm:altitudepressure(altitude) < 0.0005 and vector > pitchPID[0]
     return 2.
   set pitchPID[7] to pitchPID[1].
   if apoapsis < body:atm:height + flight[7] and altitude < body:atm:height
@@ -282,7 +282,9 @@ local function Direction // azimuth control
 
 local function PostAtmosphericFlight
 {
-  parameter flight, TargetHeight, phase.
+  parameter flight, TargetHeight, phase, pitchPID.
+  set pitchPID[0] to 90 - arcTan(flight[2] * temp / sqrt((body:atm:height + flight[7]) ^ 2 - temp ^ 2)).
+  local vector is arcSin(verticalSpeed / ship:velocity:surface:mag).
   set flight[1] to 0.
   if apoapsis >= 0.9 * TargetHeight
     set flight[6] to 1 - (5 * apoapsis / TargetHeight - 4.5).
@@ -299,6 +301,8 @@ local function PostAtmosphericFlight
       return 4.
     }
   }
+  if phase = 2 and vector < pitchPID[0]
+    return 1.
   return phase.
 }
 
