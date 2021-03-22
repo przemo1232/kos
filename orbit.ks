@@ -302,7 +302,13 @@ local function PostAtmosphericFlight
     }
   }
   if phase = 2 and vector < pitchPID[0]
+  {
+    set pitchPID[3] to 0.
+    set pitchPID[7] to 0.
+    set pitchPID[8] to 0.
+    set pitchPID[9] to 0.
     return 1.
+  }
   return phase.
 }
 
