@@ -283,7 +283,7 @@ local function Direction // azimuth control
 local function PostAtmosphericFlight
 {
   parameter flight, TargetHeight, phase, pitchPID.
-  set pitchPID[0] to 90 - arcTan(flight[2] * temp / sqrt((body:atm:height + flight[7]) ^ 2 - temp ^ 2)).
+  set pitchPID[0] to 90 - arcTan(flight[2] * altitude / sqrt((body:atm:height + flight[7]) ^ 2 - altitude ^ 2)).
   local vector is arcSin(verticalSpeed / ship:velocity:surface:mag).
   set flight[1] to 0.
   if apoapsis >= 0.9 * TargetHeight
