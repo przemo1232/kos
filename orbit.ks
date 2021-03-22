@@ -91,7 +91,7 @@ local function main
     {
       if RCSToggle
         rcs on.
-      set phase to PostAtmosphericFlight(flight, body:atm:height + margin, phase).
+      set phase to PostAtmosphericFlight(flight, body:atm:height + margin, phase, pitchPID).
     }
     if phase = 3
     {
