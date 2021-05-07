@@ -68,6 +68,7 @@ local function main
     print "Heading: " + round(flight:azimuth, 1) + "   " at(0, 4).
     print "Apoapsis: " + round(apoapsis, 0) + " m  " at(0, 6).
     print "Periapsis: " + round(periapsis, 0) + " m  " at(0, 7).
+    print "Acceleration: " + curacc at(0, terminal:height - 2).
     // end readouts
     if phase > 0
     {
@@ -87,18 +88,10 @@ local function main
         rcs on.
       set phase to NonAtmosphericAscent(flight).
     }
-    if phase = 2
-    {
-      set phase to PostAtmosphericFlight(flight, body:atm:height + margin, phase, pitchPID).
-    }
-    if phase = 3
+    if phase = 4
     {
       if RCSToggle
         rcs on.
-      set phase to ApRaise(flight, height, PitchPID).
-    }
-    if phase = 4
-    {
       set phase to Circularization(flight, height, acceleration, CircPID).
     }
     if phase = -1
@@ -118,9 +111,9 @@ local function main
 local function Staging // auto staging based on numbered fuel tanks
 {
   parameter x.
+  local ready is stage:ready.
   if x >= 0 and ship:partsdubbed(x:tostring):length > 0
   {
-    local ready is stage:ready.
     for y in ship:partsdubbed(x:tostring)[0]:resources
       if y:amount < 0.001 and y:name <> "ElectricCharge" and ready
       {
@@ -190,27 +183,14 @@ local function AtmosphericFlight // steering while in atmosphere
       set pitchPID:LastTime to CurrentTime.
     }
     set output to pitchPID:TargetPitch + pitchPID:p * pitchPID:kp + pitchPID:i * pitchPID:ki + pitchPID:d * pitchPID:kd.
-    if output < 0
-      set flight:pitch to 0.
-    else if output > 90
-      set flight:pitch to min(90, vector + 15).
-    else if output > vector + 15
-      set flight:pitch to vector + 15.
-    else if output < vector - 10
-      set flight:pitch to vector - 10.
-    else
-      set flight:pitch to output.
+    set flight:pitch to max(0, min(90, max(vector - 10, min(vector + 15, output)))).
   }
-  if body:atm:altitudepressure(altitude) > 0.0005 and flight:twr > 0 // throttle control
+  if body:atm:altitudepressure(altitude) > 0.001 and flight:twr > 0 // throttle control
   {
     if altitude > body:atm:height / 20
     {
-      if 1 + (output - pitchPID:TargetPitch) * 0.1 > 2 / flight:twr
-        set flight:throttle to 2 / flight:twr.
-      else if 1 + (output - pitchPID:TargetPitch) * 0.1 < 1 / flight:twr
-        set flight:throttle to 1 / flight:twr.
-      else
-        set flight:throttle to 1 + (output - pitchPID:TargetPitch) * 0.1.
+      local thrt is 1 + (output - pitchPID:TargetPitch) * 0.1.
+      set flight:throttle to min(2 / flight:twr, max(1 / flight:twr, thrt)).
     }
     else
       set flight:throttle to 2 / flight:twr.
@@ -286,10 +266,11 @@ local function Circularization // finishing the orbit
 {
   parameter flight, height, acceleration, circPID.
   local raise is (apoapsis < height). // raising the ap
-  local CurrentTime is missionTime.
   local CurrentSpeed is sqrt(body:mu * (2 / (body:radius + apoapsis) - 1 / orbit:semimajoraxis)).
   local TargetSpeed is sqrt(body:mu / (body:radius + apoapsis)).
-  local BurnTime is (TargetSpeed - CurrentSpeed) / acceleration.
+  local BurnTime is 0.
+  if acceleration > 0
+    set BurnTime to (TargetSpeed - CurrentSpeed) / acceleration.
   if acceleration > 0 and BurnTime >= eta:apoapsis * 2 and not(circPID:trigger) // turning the engine on and off
   {
     set circPID:trigger to true.
@@ -313,21 +294,22 @@ local function Circularization // finishing the orbit
   else if flight:twr > 0 // throttle and attitude control
   {
     if (periapsis + body:radius) > 0.95 * (height + body:radius)
-      set flight:throttle to 1 / flight:twr / 2.
+      set flight:throttle to min(1 / flight:twr / 2, 1).
     else if not(raise) and eta:apoapsis < 0.5 * orbit:period
-      set flight:throttle to burntime / eta:apoapsis / 2.
+      set flight:throttle to min(burntime / eta:apoapsis / 2, 1).
     else
       set flight:throttle to 1.
     local VerticalAcc is vxcl(up:vector, velocity:orbit):sqrmagnitude / (body:radius + altitude) - body:mu / (body:radius + altitude) ^ 2.
-    set circPID:p to arcSin(VerticalAcc / acceleration).
+    if -VerticalAcc / (acceleration * flight:throttle) < 1
+      set circPID:p to arcSin(-VerticalAcc / (acceleration * flight:throttle)).
+    else
+      set circPID:p to 90.
     set circPID:d to min(-verticalSpeed, 2).
     local output is circPID:p * circPID:kp + circPID:d * circPID:kd.
-    if output < 0
-      set flight:pitch to 0.
-    else if output > 45
-      set flight:pitch to 45.
+    if verticalSpeed < 0
+      set flight:pitch to min(45, max(0, output)).
     else
-      set flight:pitch to output.
+      set flight:pitch to 0.
   }
   if periapsis > 0.99 * height and (eta:apoapsis < 3 / 4 * orbit:period and eta:apoapsis > orbit:period / 4)
     return -1.
