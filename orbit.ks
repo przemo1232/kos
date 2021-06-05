@@ -17,22 +17,90 @@ local function pidgenerator
 
 local function main
 {
-  // fail conditions
+  set terminal:height to 36.
+  set terminal:width to 50.
+  if not (status = "landed" or status = "prelaunch")
+  {
+    print "Vessel is not landed".
+    return.
+  }
+  local height is 0.
+  local inclination is 0.
+  local RCSToggle is false.
+  local StartTurn is 0.
+  local profile is 0.
   local margin is 1e4.
-  if height < body:atm:height + margin
+  // parameters
+  clearguis().
+  local check is false.
+  local maingui is gui(-300, 300).
+  local options is maingui:addvlayout().
+  local advOptions is maingui:addvlayout().
+  // options
+  options:addlabel("Orbit height").
+  local inputHeight is options:addtextfield((body:atm:height + 1e4):tostring).
+  options:addlabel("Orbit inclination").
+  local inputInclination is options:addtextfield(ceiling(abs(latitude), 1):tostring).
+  local inputRCSToggle is options:addcheckbox("Toggle RCS above atmosphere?", false).
+  local advanced is options:addbutton("Advanced").
+  options:addspacing(30).
+  // advOptions
+  advOptions:addlabel("Ascent guidance start alitude").
+  local inputStartTurn is advOptions:addtextfield("100").
+  advOptions:addlabel("Ascent profile multiplier").
+  local inputProfile is advOptions:addtextfield("4").
+  local back is advOptions:addbutton("Back").
+  advOptions:addspacing(30).
+  local ready is maingui:addbutton("Ready"). 
+  set advOptions:visible to false.
+  maingui:show().
+  until check
   {
-    print "Incorrect height value".
-    return.
+    until ready:takepress
+    {
+      if advanced:takepress
+      {
+        options:hide().
+        advOptions:show().
+      }
+      if back:takepress
+      {
+        advOptions:hide().
+        options:show().
+      }
+    }
+    set check to true.
+    set height to inputHeight:text:tonumber(-1).
+    set inclination to inputInclination:text:tonumber(200).
+    set RCSToggle to inputRCSToggle:pressed.
+    set StartTurn to inputStartTurn:text:tonumber(-1).
+    set profile to inputProfile:text:tonumber(-1).
+    //fail conditions
+    if height < body:atm:height + margin
+    {
+      set check to false.
+      hudtext("Incorrect height, must be at least " + (body:atm:height + margin), 10, 2, 24, red, false).
+    }
+    if abs(inclination) < ceiling(abs(latitude), 1) or abs(inclination) > 180 - ceiling(abs(latitude), 1)
+    {
+      set check to false.
+      hudtext("Incorrect inclination, must be at least " + ceiling(abs(latitude), 1), 10, 2, 24, red, false).
+    }
+    if StartTurn < 0
+    {
+      set check to false.
+      hudtext("Incorrect Ascent guidance start alitude, must be positive", 10, 2, 24, red, false).
+    }
+    if profile <= 0
+    {
+      set check to false.
+      hudtext("Incorrect profile, must be greater than 0", 10, 2, 24, red, false).
+    }
   }
-  if abs(inclination) < ceiling(abs(latitude), 1) or abs(inclination) > 180 - ceiling(abs(latitude), 1)
-  {
-    print "Incorrect inclination value, minimal is" + ceiling(abs(latitude), 1).
-    return.
-  }
+  maingui:hide().
   // initialization
-  sas off.
-  local flight is lexicon("azimuth", 90, "pitch", 90, "profile", 4, "upwards", true, "LastTime",
-  missionTime + 10, "LastLatitude", latitude, "throttle", 0, "margin", 1e4, "twr", 0, "StartTurn", StartTurn).
+  local flight is lexicon("azimuth", 90, "pitch", 90, "profile", profile, "upwards", true, "LastTime",
+  missionTime + 10, "LastLatitude", latitude, "throttle", 0, "margin", margin, "twr", 0, "StartTurn", StartTurn).
   if inclination < 0
     set flight:upwards to false.
   local phase is 0.
@@ -53,6 +121,7 @@ local function main
   until finished
   {
     // updates
+    sas off.
     set curacc to acceleration * min(flight:throttle, 1).
     set gravity to body:mu / (body:radius + altitude) ^ 2.
     set acceleration to ship:availablethrust / ship:mass.
@@ -62,13 +131,13 @@ local function main
     // readouts
     if CurrentStage >= 0
       print "Current stage: " + CurrentStage at(0, terminal:height - 1).
-    print "Throttle: " + min(round(flight:throttle, 2), 1) + "   " at(0, 0).
-    print "Acceleration: " + round(curacc, 2) + " m/s^2     " at(0, 1).
-    print "Pitch: " + round(flight:pitch, 1) + "   " at(0, 3).
-    print "Heading: " + round(flight:azimuth, 1) + "   " at(0, 4).
-    print "Apoapsis: " + round(apoapsis, 0) + " m  " at(0, 6).
-    print "Periapsis: " + round(periapsis, 0) + " m  " at(0, 7).
-    print "Acceleration: " + curacc at(0, terminal:height - 2).
+    print "Throttle: " + min(round(flight:throttle, 2), 1) + "    " at(0, 0).
+    print "Acceleration: " + round(curacc, 2) + " m/s^2      " at(0, 1).
+    print "Pitch: " + round(flight:pitch, 2) + "    " at(0, 3).
+    print "Heading: " + round(flight:azimuth, 2) + "    " at(0, 4).
+    print "Apoapsis: " + round(apoapsis, 0) + " m   " at(0, 6).
+    print "Periapsis: " + round(periapsis, 0) + " m   " at(0, 7).
+    print "Inclination: " + round(orbit:inclination, 2) + "    " at(0, 8).
     // end readouts
     if phase > 0
     {
@@ -100,8 +169,8 @@ local function main
       set finished to true.
       clearscreen.
       print "Orbit achieved, endling script.".
-      print "Periapsis: " + round(periapsis, 0).
-      print "Apoapsis: " + round(apoapsis, 0).
+      print "Periapsis: " + round(periapsis, 0) + " m".
+      print "Apoapsis: " + round(apoapsis, 0) + " m".
       rcs off.
     }
     wait 0.
@@ -280,7 +349,12 @@ local function Circularization // finishing the orbit
   {
     set circPID:trigger to false.
     if raise
-      set flight:throttle to 1.
+    {
+      if apoapsis > 0.97 * height and flight:twr > 0
+        set flight:throttle to 1 / flight:twr.
+      else
+        set flight:throttle to 1.
+    }
     else
       set flight:throttle to 0.
   }
@@ -316,20 +390,4 @@ local function Circularization // finishing the orbit
   return 4.
 }
 
-parameter height is 0, inclination is ceiling(abs(latitude), 1), StartTurn is 100, RCSToggle is false.
-set terminal:height to 36.
-set terminal:width to 50.
-if not (status = "landed" or status = "prelaunch")
-  print "Vessel is not landed".
-else if height = 0
-{
-  print "Use this script with parameters:".
-  print "Altitude [m]".
-  print "Optional parameters:".
-  print "Inclination [degrees](current latitude)".
-  print "Turn start altitude [m](100)".
-  print "Toggle rcs above atmosphere(false)".
-  print "Smallest inclination possible: " + ceiling(abs(latitude), 1).
-}
-else
-  main().
+main().
