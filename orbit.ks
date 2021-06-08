@@ -3,6 +3,7 @@
 // auto staging relies on tagged fuel tanks: when a tank tagged "0", "1", "2" etc is empty, the script stages until rocket has thrust
 // the script will not release launch clamps if there already is thrust
 // higher profile parameter means shallower ascent (it has to be bigger than 0 (4 works fine for me but you can experiment))
+@lazyGlobal off.
 
 local function pidgenerator
 {
@@ -30,43 +31,118 @@ local function main
   local StartTurn is 0.
   local profile is 0.
   local margin is 1e4.
-  // parameters
+  // maingui
   clearguis().
   local check is false.
   local maingui is gui(-300, 300).
-  local options is maingui:addvlayout().
-  local advOptions is maingui:addvlayout().
+  set maingui:style:width to 300.
+  // compartments
+  local compartments is maingui:addhlayout().
+  local readoutscontainer is compartments:addvlayout().
+  local readouts is readoutscontainer:addhlayout().
+  local options is compartments:addvlayout().
+  local tools is compartments:addvlayout().
+  local dev is compartments:addvlayout().
+  // readouts
+  readouts:hide().
+  local leftread1 is readouts:addvlayout().
+  set leftread1:style:width to 100.
+  local leftread2 is readouts:addvlayout().
+  set leftread2:style:width to 90.
+  readouts:addspacing(40).
+  local rightread1 is readouts:addvlayout().
+  set rightread1:style:width to 80.
+  local rightread2 is readouts:addvlayout().
+  set rightread2:style:width to 90.
+  local waiting is readoutscontainer:addlabel("").
+  // leftread
+  leftread1:addlabel("Current Stage").
+  local stageread is leftread2:addtextfield("0").
+  leftread1:addlabel("Throttle").
+  local throttleread is leftread2:addtextfield("0").
+  leftread1:addlabel("Acceleration").
+  local accelerationread is leftread2:addtextfield("0").
+  leftread1:addlabel("Pitch").
+  local pitchread is leftread2:addtextfield("0").
+  leftread1:addlabel("Heading").
+  local headingread is leftread2:addtextfield("0").
+  rightread1:addlabel("Apoapsis").
+  local apoapsisread is rightread2:addtextfield("0").
+  rightread1:addlabel("Periapsis").
+  local periapsisread is rightread2:addtextfield("0").
+  rightread1:addlabel("Inclination").
+  local inclinationread is rightread2:addtextfield("0").
+  rightread1:addlabel("Ln. of AN").
+  local LnofANread is rightread2:addtextfield("0").
+  rightread1:addlabel("Arg of Pe").
+  local ArgofPeread is rightread2:addtextfield("0").
+  for x in leftread2:widgets
+    set x:style:align to "right".
+  for x in rightread2:widgets
+    set x:style:align to "right".
   // options
-  options:addlabel("Orbit height").
-  local inputHeight is options:addtextfield((body:atm:height + 1e4):tostring).
-  options:addlabel("Orbit inclination").
-  local inputInclination is options:addtextfield(ceiling(abs(latitude), 1):tostring).
+  local tabs is options:addhlayout().
+  local simplebutton is tabs:addbutton("Simple").
+  local advancedbutton is tabs:addbutton("Advanced").
+  set simplebutton:pressed to true.
+  local simple is options:addvlayout().
+  local advanced is options:addvlayout().
+  options:addlabel("Ascent guidance start alitude").
+  local inputStartTurn is options:addtextfield("0").
   local inputRCSToggle is options:addcheckbox("Toggle RCS above atmosphere?", false).
-  local advanced is options:addbutton("Advanced").
   options:addspacing(30).
-  // advOptions
-  advOptions:addlabel("Ascent guidance start alitude").
-  local inputStartTurn is advOptions:addtextfield("100").
-  advOptions:addlabel("Ascent profile multiplier").
-  local inputProfile is advOptions:addtextfield("4").
-  local back is advOptions:addbutton("Back").
-  advOptions:addspacing(30).
-  local ready is maingui:addbutton("Ready"). 
-  set advOptions:visible to false.
+  local ready is options:addbutton("Ready"). 
+  // dev
+  dev:hide().
+  set dev:style:width to 200.
+  dev:addlabel("Ascent profile multiplier").
+  local inputProfile is dev:addtextfield("4").
+  // simple
+  simple:addlabel("Orbit height").
+  local inputHeight is simple:addtextfield((body:atm:height + 1e4):tostring).
+  simple:addlabel("Orbit inclination").
+  local inputInclination is simple:addtextfield(ceiling(abs(latitude), 1):tostring).
+  // advanced
+  advanced:hide().
+  set advanced:visible to false.
+  // tools
+  set tools:style:width to 30.
+  local minimize is tools:addbutton("_").
+  set minimize:style:width to 0.
+  minimize:hide().
+  local devbutton is tools:addbutton(">").
+  set devbutton:style:width to 0.
   maingui:show().
   until check
   {
     until ready:takepress
     {
-      if advanced:takepress
+      if simplebutton:pressed and advanced:visible
       {
-        options:hide().
-        advOptions:show().
+        advancedbutton:takepress.
+        advanced:hide().
+        simple:show().
       }
-      if back:takepress
+      if advancedbutton:pressed and simple:visible
       {
-        advOptions:hide().
-        options:show().
+        simplebutton:takepress.
+        simple:hide().
+        advanced:show().
+      }
+      if devbutton:takepress
+      {
+        if dev:visible
+        {
+          set maingui:style:width to 300.
+          dev:hide().
+          set devbutton:text to ">".
+        }
+        else
+        {
+          set maingui:style:width to 500.
+          dev:show().
+          set devbutton:text to "<".
+        }
       }
     }
     set check to true.
@@ -76,10 +152,10 @@ local function main
     set StartTurn to inputStartTurn:text:tonumber(-1).
     set profile to inputProfile:text:tonumber(-1).
     //fail conditions
-    if height < body:atm:height + margin
+    if height < body:atm:height
     {
       set check to false.
-      hudtext("Incorrect height, must be at least " + (body:atm:height + margin), 10, 2, 24, red, false).
+      hudtext("Incorrect height, must be at least " + (body:atm:height), 10, 2, 24, red, false).
     }
     if abs(inclination) < ceiling(abs(latitude), 1) or abs(inclination) > 180 - ceiling(abs(latitude), 1)
     {
@@ -97,9 +173,15 @@ local function main
       hudtext("Incorrect profile, must be greater than 0", 10, 2, 24, red, false).
     }
   }
-  maingui:hide().
+  readouts:show().
+  options:hide().
+  dev:hide().
+  devbutton:hide().
+  minimize:show().
+  set maingui:style:width to 444.
+  set maingui:style:height to 180.
   // initialization
-  local flight is lexicon("azimuth", 90, "pitch", 90, "profile", profile, "upwards", true, "LastTime",
+  local flight is lexicon("azimuth", -ship:bearing, "pitch", 90, "profile", profile, "upwards", true, "LastTime",
   missionTime + 10, "LastLatitude", latitude, "throttle", 0, "margin", margin, "twr", 0, "StartTurn", StartTurn).
   if inclination < 0
     set flight:upwards to false.
@@ -120,6 +202,26 @@ local function main
   // finish initialization, begin main loop
   until finished
   {
+    // gui
+    if minimize:takepress
+    {
+      if minimize:text = "_"
+      {
+        set minimize:text to "[]".
+        readoutscontainer:hide().
+        set maingui:style:width to 44.
+        set maingui:style:height to 50.
+        set maingui:x to maingui:x + 400.
+      }
+      else
+      {
+        set minimize:text to "_".
+        readoutscontainer:show().
+        set maingui:style:width to 444.
+        set maingui:style:height to 180.
+        set maingui:x to maingui:x - 400.
+      }
+    }
     // updates
     sas off.
     set curacc to acceleration * min(flight:throttle, 1).
@@ -130,16 +232,18 @@ local function main
       set CurrentStage to Staging(CurrentStage).
     // readouts
     if CurrentStage >= 0
-      print "Current stage: " + CurrentStage at(0, terminal:height - 1).
-    print "Throttle: " + min(round(flight:throttle, 2), 1) + "    " at(0, 0).
-    print "Acceleration: " + round(curacc, 2) + " m/s^2      " at(0, 1).
-    print "Pitch: " + round(flight:pitch, 2) + "    " at(0, 3).
-    print "Heading: " + round(flight:azimuth, 2) + "    " at(0, 4).
-    print "Apoapsis: " + round(apoapsis, 0) + " m   " at(0, 6).
-    print "Periapsis: " + round(periapsis, 0) + " m   " at(0, 7).
-    print "Inclination: " + round(orbit:inclination, 2) + "    " at(0, 8).
+      set stageread:text to CurrentStage:tostring.
+    set throttleread:text to min(round(flight:throttle, 2), 1):tostring.
+    set accelerationread:text to round(curacc, 2):tostring + " m/s²".
+    set pitchread:text to round(flight:pitch, 2):tostring.
+    set headingread:text to round(flight:azimuth, 2):tostring.
+    set apoapsisread:text to round((apoapsis / 1000), 1):tostring + " km".
+    set periapsisread:text to round((periapsis / 1000), 1):tostring + " km".
+    set inclinationread:text to round(orbit:inclination, 2):tostring.
+    set LnofANread:text to round(orbit:longitudeofascendingnode, 1):tostring.
+    set ArgofPeread:text to round(orbit:argumentofperiapsis, 1):tostring.
     // end readouts
-    if phase > 0
+    if phase > 0 and ship:bounds:bottomaltradar > flight:StartTurn
     {
       Direction(flight, inclination).
     }
@@ -159,18 +263,20 @@ local function main
     }
     if phase = 4
     {
-      if RCSToggle
+      if RCSToggle and abs(steeringManager:angleerror) > 0.5 and curacc = 0
         rcs on.
-      set phase to Circularization(flight, height, acceleration, CircPID).
+      else
+        rcs off.
+      set phase to Circularization(flight, height, acceleration, CircPID, waiting).
     }
     if phase = -1
     {
       set flight:throttle to 0.
       set finished to true.
-      clearscreen.
-      print "Orbit achieved, endling script.".
-      print "Periapsis: " + round(periapsis, 0) + " m".
-      print "Apoapsis: " + round(apoapsis, 0) + " m".
+      hudtext("Orbit achieved, ending script.", 10, 2, 24, green, false).
+      wait 0.1.
+      set periapsisread:text to round(periapsis / 1000, 1):tostring + " km".
+      set apoapsisread:text to round(apoapsis / 1000, 1):tostring + " km".
       rcs off.
     }
     wait 0.
@@ -184,7 +290,7 @@ local function Staging // auto staging based on numbered fuel tanks
   if x >= 0 and ship:partsdubbed(x:tostring):length > 0
   {
     for y in ship:partsdubbed(x:tostring)[0]:resources
-      if y:amount < 0.001 and y:name <> "ElectricCharge" and ready
+      if y:amount = 0 and y:name <> "ElectricCharge" and ready
       {
         stage.
         set ready to false.
@@ -194,26 +300,20 @@ local function Staging // auto staging based on numbered fuel tanks
       stage.
   }
   else
-  {
-    print "No more predefined stages" at(0, terminal:height - 1).
     set x to -1.
-  }
   return x.
 }
 
 local function Countdown
 {
   parameter flight.
-  clearscreen.
-  print "Counting down".
-  set x to 5.
+  local x is 5.
   until x <= 0
   {
-    print x.
+    hudtext("T-" + x, 1, 2, 36, yellow, false).
     set x to x - 1.
     wait 1.
   }
-  clearscreen.
   set flight:throttle to 1.
   until ship:availablethrust > 0
   {
@@ -292,7 +392,7 @@ local function NonAtmosphericAscent // WIP
   else
     set flight:throttle to 1 / flight:twr * 2.
   if apoapsis > flight:margin
-    return 3.
+    return 4.
   return 1.5.
 }
 
@@ -301,6 +401,7 @@ local function Direction // azimuth control
   parameter flight, inclination.
   local scaling is 10.
   local temp is orbit:inclination.
+  local compensation is 0.
   if abs(inclination) - 0.1 > temp
   {
     if abs(inclination) > temp // compensation for initial speed
@@ -333,7 +434,7 @@ local function Direction // azimuth control
 
 local function Circularization // finishing the orbit
 {
-  parameter flight, height, acceleration, circPID.
+  parameter flight, height, acceleration, circPID, waiting.
   local raise is (apoapsis < height). // raising the ap
   local CurrentSpeed is sqrt(body:mu * (2 / (body:radius + apoapsis) - 1 / orbit:semimajoraxis)).
   local TargetSpeed is sqrt(body:mu / (body:radius + apoapsis)).
@@ -341,10 +442,7 @@ local function Circularization // finishing the orbit
   if acceleration > 0
     set BurnTime to (TargetSpeed - CurrentSpeed) / acceleration.
   if acceleration > 0 and BurnTime >= eta:apoapsis * 2 and not(circPID:trigger) // turning the engine on and off
-  {
     set circPID:trigger to true.
-    clearscreen.
-  }
   else if acceleration > 0 and BurnTime <= eta:apoapsis and periapsis < 0.99 * height and verticalSpeed > 0.1 
   {
     set circPID:trigger to false.
@@ -363,10 +461,12 @@ local function Circularization // finishing the orbit
     set flight:pitch to 0.
     set circPID:p to 0.
     set circPID:d to 0.
-    print "Waiting for burn: " + round(eta:apoapsis - BurnTime / 2, 0) + " s  " at(0, 33).
+    local temp is round(eta:apoapsis - BurnTime / 2, 0).
+    set waiting:text to "Waiting for burn: " + temp:tostring + " s".
   }
   else if flight:twr > 0 // throttle and attitude control
   {
+    set waiting:text to "".
     if (periapsis + body:radius) > 0.95 * (height + body:radius)
       set flight:throttle to min(1 / flight:twr / 2, 1).
     else if not(raise) and eta:apoapsis < 0.5 * orbit:period
