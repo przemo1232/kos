@@ -66,6 +66,9 @@ local function main
   local pitchread is leftread2:addtextfield("0").
   leftread1:addlabel("Heading").
   local headingread is leftread2:addtextfield("0").
+  for x in leftread2:widgets
+    set x:style:align to "right".
+  // rightread
   rightread1:addlabel("Apoapsis").
   local apoapsisread is rightread2:addtextfield("0").
   rightread1:addlabel("Periapsis").
@@ -76,8 +79,6 @@ local function main
   local LnofANread is rightread2:addtextfield("0").
   rightread1:addlabel("Arg of Pe").
   local ArgofPeread is rightread2:addtextfield("0").
-  for x in leftread2:widgets
-    set x:style:align to "right".
   for x in rightread2:widgets
     set x:style:align to "right".
   // options
@@ -104,7 +105,6 @@ local function main
   local inputInclination is simple:addtextfield(ceiling(abs(latitude), 1):tostring).
   // advanced
   advanced:hide().
-  set advanced:visible to false.
   // tools
   set tools:style:width to 30.
   local minimize is tools:addbutton("_").
@@ -278,6 +278,8 @@ local function main
       set periapsisread:text to round(periapsis / 1000, 1):tostring + " km".
       set apoapsisread:text to round(apoapsis / 1000, 1):tostring + " km".
       rcs off.
+      wait 10.
+      maingui:dispose().
     }
     wait 0.
   }
