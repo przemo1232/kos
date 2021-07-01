@@ -9,8 +9,6 @@ local function pidgenerator
 {
   parameter reference, value, type is 0.
   local pid is lexicon(reference, value, "p", 0, "kp", 1, "i", 0, "ki", 1, "d", 0, "kd", 1, "lastp", 0, "lasttime", 0).
-  if type = 1
-    pid:add("trigger", false).
   if type = 2
     pid:add("lasti", 0).
   return pid.
@@ -187,10 +185,10 @@ local function main
       set check to false.
       hudtext("Incorrect height, must be at least " + (body:atm:height), 10, 2, 24, red, false).
     }
-    if abs(inclination) < ceiling(abs(latitude), 1) or abs(inclination) > 180 - ceiling(abs(latitude), 1)
+    if inclination < ceiling(abs(latitude), 1) or inclination > 180 - ceiling(abs(latitude), 1)
     {
       set check to false.
-      hudtext("Incorrect inclination, must be at least " + ceiling(abs(latitude), 1), 10, 2, 24, red, false).
+      hudtext("Incorrect inclination, must be between " + ceiling(abs(latitude), 1) + " and " + (180 - ceiling(abs(latitude), 1)), 10, 2, 24, red, false).
     }
     if StartTurn < 0
     {
@@ -231,15 +229,17 @@ local function main
   // initialization
   local flight is lexicon("azimuth", -ship:bearing, "pitch", 90, "profile", profile, "upwards", true, "LastTime",
   missionTime + 10, "LastLatitude", latitude, "throttle", 0, "margin", margin, "twr", 0, "StartTurn", StartTurn,
-  "yeet", heading(0,0), "autoWarp", autoWarp).
+  "yeet", heading(-ship:bearing, 90), "autoWarp", autoWarp, "trigger", false, "lastAcceleration", 0, "timeToManeuver", 0,
+  "thrustloss", false, "counter", missionTime).
   local targetOrbit is lexicon("periapsis", height, "apoapsis", targetAp, "inclination", inclination,
-  "longofAN", LongofAN, "argofPe", ArgofPe, "warpcheck", 0).
-  if targetOrbit:inclination < 0
-    set flight:upwards to false.
+  "longofAN", LongofAN, "argofPe", ArgofPe, "warpcheck", 0, "semiMajorAxis", (height + targetAp + 2 * body:radius) / 2,
+  "CurrentSpeed", 0, "TargetSpeed", 0, "OrbitType", 0).
+  if advanced:visible
+    set targetOrbit:OrbitType to 1.
   local phase is 0.
   local finished is false.
   local CurrentStage is 0.
-  local CircPID is pidgenerator("UpSpeed", 0, 1).
+  local CircPID is pidgenerator("UpSpeed", 0).
   local PitchPID is pidgenerator("TargetPitch", 90, 2).
   set PitchPID:kp to 5.
   set PitchPID:ki to 0.25.
@@ -247,8 +247,8 @@ local function main
   local gravity is 0.
   local acceleration is 0.
   local curacc is 0.
+  local delay is 0.
   lock throttle to flight:throttle.
-  set flight:yeet to heading(flight:azimuth, flight:pitch).
   lock steering to flight:yeet.
   // finish initialization, begin main loop
   until finished
@@ -276,11 +276,10 @@ local function main
     // updates
     sas off.
     set gravity to body:mu / (body:radius + altitude) ^ 2.
+    set flight:lastAcceleration to acceleration.
     set acceleration to ship:availablethrust / ship:mass.
     set curacc to acceleration * min(flight:throttle, 1).
     set flight:twr to acceleration / gravity.
-    if missionTime > 0
-      set CurrentStage to Staging(CurrentStage).
     // readouts
     if CurrentStage >= 0
       set stageread:text to CurrentStage:tostring.
@@ -294,17 +293,26 @@ local function main
     set LnofANread:text to round(orbit:longitudeofascendingnode, 1):tostring.
     set ArgofPeread:text to round(orbit:argumentofperiapsis, 1):tostring.
     // end readouts
+    if missionTime > 0
+      set CurrentStage to Staging(CurrentStage).
     if phase > 0 and ship:bounds:bottomaltradar > flight:StartTurn
     {
       Direction(flight, inclination).
     }
     if phase < 4
     {
-      set flight:yeet to heading(flight:azimuth, flight:pitch). 
+      set flight:yeet to heading(flight:azimuth, flight:pitch).
     }
     if phase = 0
     {
-      set phase to Countdown(flight).
+      set phase to Countdown(flight, targetOrbit, waiting).
+      if phase = 1
+      {
+        set flight:LastTime to missionTime + 5.
+        set flight:counter to missionTime.
+        set flight:timeToManeuver to 0.
+        set targetOrbit:warpcheck to 0.
+      }
     }
     if phase = 1
     {
@@ -325,10 +333,23 @@ local function main
     }
     if phase = 4
     {
-      set phase to Circularization(flight, targetOrbit, acceleration, CircPID, waiting, 4).
+      set phase to Circularization(flight, targetOrbit, acceleration, CircPID, waiting).
+      if phase = 5
+      {
+        set targetOrbit:warpcheck to 0.
+        set flight:trigger to false.
+        set delay to missionTime.
+        if targetOrbit:OrbitType = 0
+          set phase to -1.
+      }
+    }
+    if phase = 5 and missionTime > delay + 1
+    {
+      set phase to OrbitFinish(flight, targetOrbit, waiting, acceleration).
     }
     if phase = -1
     {
+      unlock steering.
       set flight:throttle to 0.
       set finished to true.
       hudtext("Orbit achieved, ending script.", 10, 2, 24, green, false).
@@ -358,13 +379,10 @@ local function Staging // auto staging based on numbered fuel tanks
         break.
       }
     if ready and ship:availablethrust = 0 // extra staging if needed
-    {
       stage.
-      wait 0.
-      if ship:partsdubbed(x:tostring):length = 0.
-        set x to x + 1.
-    }
   }
+  else if x >= 0 and ship:partsdubbed((x + 1):tostring):length > 0
+    set x to x + 1.
   else
     set x to -1.
   return x.
@@ -372,23 +390,38 @@ local function Staging // auto staging based on numbered fuel tanks
 
 local function Countdown
 {
-  parameter flight.
-  local x is 5.
-  until x <= 0
+  parameter flight, targetOrbit, waiting.
+  if flight:timeToManeuver = 0 and targetOrbit:OrbitType = 1
+    set flight:timeToManeuver to StartAngle(targetOrbit).
+  if time:seconds > flight:timeToManeuver - 6
   {
-    hudtext("T-" + x, 1, 2, 36, yellow, false).
-    set x to x - 1.
-    wait 1.
+    local x is 5.
+    set waiting:text to "".
+    until x <= 0
+    {
+      hudtext("T-" + x, 1, 2, 36, yellow, false).
+      set x to x - 1.
+      wait 1.
+    }
+    set flight:throttle to 1.
+    until ship:availablethrust > 0
+    {
+      stage.
+      wait until stage:ready.
+    }
+    if body:atm:exists
+      return 1.
+    return 1.5.
   }
-  set flight:throttle to 1.
-  until ship:availablethrust > 0
+  else
   {
-    stage.
-    wait until stage:ready.
+    set waiting:text to "Waiting for correct alignment: " + round((flight:timeToManeuver - time:seconds), 0):tostring + " s".
+    if flight:autoWarp and kuniverse:timewarp:rate = 1 and (flight:timeToManeuver - time:seconds) > 11 and targetOrbit:warpcheck = 0
+    {
+      warpto(flight:timeToManeuver - 10).
+      set targetORbit:warpcheck to -1.
+    }
   }
-  if body:atm:exists
-    return 1.
-  return 1.5.
 }
 
 local function AtmosphericFlight // steering while in atmosphere
@@ -465,56 +498,61 @@ local function NonAtmosphericAscent // WIP
 local function Direction // azimuth control
 {
   parameter flight, inclination.
-  local scaling is 10.
-  local temp is orbit:inclination.
-  local compensation is 0.
-  if abs(inclination) - 0.1 > temp
+  if missionTime > flight:counter + 1
   {
-    if abs(inclination) > temp // compensation for initial speed
-      set compensation to scaling * sin(abs(inclination) - temp) ^ 0.2.
+    local scaling is 10.
+    local temp is orbit:inclination.
+    local temp2 is latitude.
+    local compensation is 0.
+    if abs(inclination) - 0.1 > temp
+    {
+      if abs(inclination) > temp // compensation for initial speed
+        set compensation to scaling * sin(abs(inclination) - temp) ^ 0.2.
+      else
+        set compensation to -scaling * sin(temp - abs(inclination)) ^ 0.2.
+    }
     else
-      set compensation to -scaling * sin(temp - abs(inclination)) ^ 0.2.
+      set compensation to 10 * (abs(inclination) - temp).
+    set temp to latitude.
+    if abs(temp2) <= abs(inclination) // what heading i should have
+    {
+      if flight:upwards = true
+        set flight:azimuth to arcsin(cos(inclination) / cos(temp2)) - compensation.
+      else
+        set flight:azimuth to -arcsin(cos(inclination) / cos(temp2)) + 180 + compensation.
+      if flight:azimuth < 0
+        set flight:azimuth to flight:azimuth + 360.
+    }
+    set flight:counter to flight:counter + 1.
   }
-  else
-    set compensation to 10 * (abs(inclination) - temp).
-  set temp to latitude.
-  if abs(temp) <= abs(inclination) // what heading i should have
+  if missionTime > flight:LastTime + 1
   {
-    if flight:upwards = true
-      set flight:azimuth to arcsin(cos(inclination) / cos(temp)) - compensation.
-    else
-      set flight:azimuth to -arcsin(cos(inclination) / cos(temp)) + 180 + compensation.
-    if flight:azimuth < 0
-      set flight:azimuth to flight:azimuth + 360.
-  }
-  if missionTime > flight:LastTime + 1 // whether i'm going north or south
-  {
-    if flight:LastLatitude > latitude or latitude > abs(inclination)
+    if flight:LastLatitude > latitude or latitude > abs(inclination) // whether i'm going north or south
       set flight:upwards to false.
     if flight:LastLatitude < latitude or latitude < -abs(inclination)
       set flight:upwards to true.
     set flight:LastLatitude to latitude.
-    set flight:LastTime to missionTime.
+    set flight:LastTime to flight:LastTime + 1.
   }
 }
 
-local function Circularization // finishing the orbit
+local function Circularization // circularizing the orbit
 {
-  parameter flight, targetOrbit, acceleration, circPID, waiting, phase.
+  parameter flight, targetOrbit, acceleration, circPID, waiting.
   local raise is (apoapsis < targetOrbit:periapsis). // raising the ap
-  local CurrentSpeed is sqrt(body:mu * (2 / (body:radius + apoapsis) - 1 / orbit:semimajoraxis)).
+  local CurrentSpeed is velocityat(ship, time() + eta:apoapsis):orbit:mag.
   local TargetSpeed is sqrt(body:mu / (body:radius + apoapsis)).
   local BurnTime is 0.
   if acceleration > 0
     set BurnTime to (TargetSpeed - CurrentSpeed) / acceleration.
-  if acceleration > 0 and BurnTime >= eta:apoapsis * 2 and not(circPID:trigger) // turning the engine on and off
-    set circPID:trigger to true.
+  if acceleration > 0 and BurnTime >= eta:apoapsis * 2 // turning the engine on and off
+    set flight:trigger to true.
   else if acceleration > 0 and BurnTime <= eta:apoapsis and periapsis < 0.99 * targetOrbit:periapsis and verticalSpeed > 0.1 
   {
-    set circPID:trigger to false.
+    set flight:trigger to false.
     if raise
     {
-      if apoapsis > 0.97 * targetOrbit:periapsis and flight:twr > 0
+      if apoapsis > 0.95 * targetOrbit:periapsis and flight:twr > 0
         set flight:throttle to 1 / flight:twr.
       else
         set flight:throttle to 1.
@@ -522,13 +560,13 @@ local function Circularization // finishing the orbit
     else
       set flight:throttle to 0.
   }
-  if not(circPID:trigger or raise)
+  if not(flight:trigger or raise) // auto warp
   {
     set circPID:p to 0.
     set circPID:d to 0.
     local temp is round(eta:apoapsis - BurnTime / 2, 0).
     if altitude > body:atm:height
-      set flight:yeet to velocityat(ship, time() + temp):orbit.
+      set flight:yeet to vxcl(positionat(ship, time() + temp) - body:position, velocityat(ship, time() + temp):orbit).
     else
       set flight:yeet to srfPrograde.
     set waiting:text to "Waiting for circularization burn: " + temp:tostring + " s".
@@ -537,11 +575,12 @@ local function Circularization // finishing the orbit
       if targetOrbit:warpcheck >= 5
       {
         warpto(time:seconds + temp - 10).
-        set targetOrbit:warpcheck to 0.
+        set targetOrbit:warpcheck to -1.
       }
-      set targetOrbit:warpcheck to targetOrbit:warpcheck + 1.
+      if targetOrbit:warpcheck >= 0
+        set targetOrbit:warpcheck to targetOrbit:warpcheck + 1.
     }
-    else
+    else if targetOrbit:warpcheck > 0
       set targetOrbit:warpcheck to 0.
   }
   else if acceleration > 0 // throttle and attitude control
@@ -567,8 +606,119 @@ local function Circularization // finishing the orbit
       set flight:yeet to heading(flight:azimuth, 0).
   }
   if periapsis > 0.99 * targetOrbit:periapsis and (eta:apoapsis < 3 / 4 * orbit:period and eta:apoapsis > orbit:period / 4)
+  {
+    set flight:throttle to 0.
+    return 5.
+  }
+  return 4.
+}
+
+local function OrbitFinish // raising the ap
+{
+  parameter flight, targetOrbit, waiting, acceleration.
+  if flight:timeToManeuver = 0
+    set flight:timeToManeuver to timetoanomaly(orbit:trueanomaly, targetOrbit:ArgofPe - orbit:argumentofperiapsis) + time:seconds.
+  local TargetSpeed is sqrt(body:mu * (2 / (body:radius + periapsis) - 1 / targetOrbit:semiMajorAxis)).
+  local CurrentSpeed is velocityat(ship, flight:timeToManeuver):orbit:mag.
+  local BurnTime is 0.
+  if acceleration > 0
+    set BurnTime to (TargetSpeed - CurrentSpeed) / acceleration.
+  local TimetoBurn is flight:timeToManeuver - time:seconds - BurnTime / 2.
+  if acceleration > 0 and TimetoBurn <= 0 and not(TimetoBurn < -1 and not(flight:trigger)) // igniting the engine and throttle control
+  {
+    set flight:trigger to true.
+    set flight:throttle to max(1 / acceleration, (TargetSpeed - CurrentSpeed) / 2 / acceleration).
+    set waiting:text to "".
+  }
+  if not(flight:trigger) // auto warp
+  {
+    local temp is round(TimetoBurn, 0).
+    set flight:yeet to velocityat(ship, flight:TimetoManeuver):orbit.
+    set waiting:text to "Waiting for Ap raise burn: " + temp:tostring + " s".
+    if flight:autoWarp and kuniverse:timewarp:rate = 1 and abs(steeringManager:angleerror) < 0.5 and TimetoBurn > 11
+    {
+      if targetOrbit:warpcheck >= 5
+      {
+        warpto(time:seconds + TimetoBurn - 10).
+        set targetOrbit:warpcheck to -1.
+      }
+      if targetOrbit:warpcheck >= 0
+        set targetOrbit:warpcheck to targetOrbit:warpcheck + 1.
+    }
+    else if targetOrbit:warpcheck > 0
+      set targetOrbit:warpcheck to 0.
+  }
+  local argofpe is orbit:argumentofperiapsis.
+  until argofpe > targetOrbit:argofPe
+    set argofpe to argofpe + 360.
+  if acceleration < flight:lastacceleration * 0.8
+    set flight:thrustloss to true.
+  if flight:thrustloss and argofpe < (180 + targetOrbit:argofPe) // going an extra orbit in case of loss of thrust
+  {
+    set flight:trigger to false.
+    set flight:throttle to 0.
+    set targetOrbit:warpcheck to 0.
+    set flight:timeToManeuver to 0.
+    set flight:thrustloss to false.
+    hudtext("Loss of thrust, recalibrating", 10, 2, 24, green, false).
+  }
+  if CurrentSpeed > TargetSpeed
+  {
+    set flight:throttle to 0.
     return -1.
-  return phase.
+  }
+  return 5.
+}
+
+local function eccentricanomaly // eccentric from true
+{
+  parameter trueanomaly.
+  until trueanomaly > -180 and trueanomaly <= 180
+    set trueanomaly to trueanomaly + (choose 360 if trueanomaly <= -180 else -360).
+  local temp is orbit:eccentricity.
+  local e is 0.
+  if temp + cos(trueanomaly) <> 0
+  {
+    set e to arctan(sqrt(1-temp^2)*sin(trueanomaly)/(temp+cos(trueanomaly))).
+    if temp + cos(trueanomaly) < 0
+      set e to choose e+180 if trueanomaly > 0 else e-180.
+  }
+  else
+    set e to choose 180 if trueanomaly > 0 else -180.
+  return e.
+}
+
+local function meananomaly // mean from true
+{
+  parameter trueanomaly.
+  local e is eccentricanomaly(trueanomaly).
+  local m is e-orbit:eccentricity*sin(e)*constant:radtodeg.
+  return m.
+}
+
+local function timetoanomaly // time between two true anomalies
+{
+  parameter start, finish.
+  local mean1 is meananomaly(start).
+  local mean2 is meananomaly(finish).
+  return orbit:period*(choose mean2-mean1 if mean2 > mean1 else mean2-mean1+360)/360.
+}
+
+local function StartAngle // start longitude from spherical triagles
+{
+  parameter targetOrbit.
+  local alpha is targetOrbit:inclination.
+  local beta is arcsin(cos(targetOrbit:inclination) / cos(latitude)).
+  local c is arccos((cos(alpha)*cos(beta))/(sin(alpha)*sin(beta))).
+  local b is 90.
+  local a is 90 - latitude.
+  local angle is arccos((cos(c)-cos(a)*cos(b))/(sin(a)*sin(b))).
+  local endangle is targetOrbit:longofAN + angle - body:rotationangle - longitude.
+  if (targetOrbit:inclination > 90 and latitude >= 0) or (targetOrbit:inclination <= 90 and latitude < 0)
+    set endangle to endangle - 2 * angle.
+  until endangle >= 0 and endangle < 360
+    set endangle to endangle + (choose 360 if endangle < 0 else -360).
+  return (endangle - 1) * body:rotationperiod / 360 + time:seconds.
 }
 
 main().
