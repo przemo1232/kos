@@ -1,8 +1,9 @@
 // by przemo1232
-// basic navigation to orbit with a desired altitude and inclination
+// navigation to orbit
 // auto staging relies on tagged fuel tanks: when a tank tagged "0", "1", "2" etc is empty, the script stages until rocket has thrust
 // the script will not release launch clamps if there already is thrust
 // higher profile parameter means shallower ascent (it has to be bigger than 0 (4 works fine for me but you can experiment))
+
 @lazyGlobal off.
 
 local function pidgenerator
@@ -30,6 +31,7 @@ local function main
   local LongofAN is 0.
   local RCSToggle is false.
   local autoWarp is true.
+  local thrustLimit is 0.
   local StartTurn is 0.
   local profile is 0.
   local margin is 1e4.
@@ -90,7 +92,9 @@ local function main
   set simplebutton:pressed to true.
   local simple is options:addvlayout().
   local advanced is options:addvlayout().
-  options:addlabel("Ascent guidance start alitude").
+  options:addlabel("Thrust limit on ascent (0 means no limit)").
+  local inputThrustLimit is options:addtextfield("0").
+  options:addlabel("Ascent guidance start altitude").
   local inputStartTurn is options:addtextfield("0").
   local inputRCSToggle is options:addcheckbox("Toggle RCS above atmosphere?", false).
   local inputWarp is options:addcheckbox("Auto warp?", true).
@@ -103,9 +107,9 @@ local function main
   dev:addlabel("Ascent profile multiplier").
   local inputProfile is dev:addtextfield("4").
   // simple
-  simple:addlabel("Orbit height").
+  simple:addlabel("Height").
   local inputHeight is simple:addtextfield((body:atm:height + 1e4):tostring).
-  simple:addlabel("Orbit inclination").
+  simple:addlabel("Inclination").
   local inputInclination is simple:addtextfield(ceiling(abs(latitude), 1):tostring).
   // advanced
   advanced:addlabel("Periapsis").
@@ -113,11 +117,11 @@ local function main
   advanced:addlabel("Apoapsis").
   local inputApoapsis is advanced:addtextfield((body:atm:height + 1e4):tostring).
   advanced:addlabel("Argument of periapsis").
-  local inputArgofPe is advanced:addtextfield(0:tostring).
-  advanced:addlabel("Orbit inclination").
+  local inputArgofPe is advanced:addtextfield("0").
+  advanced:addlabel("Inclination").
   local inputInclinationAdv is advanced:addtextfield(ceiling(abs(latitude), 1):tostring).
-  advanced:addlabel("Longitude of ascending node").
-  local inputLongofAN is advanced:addtextfield(0:tostring).
+  advanced:addlabel("Longitude of ascending node," + char(10) + "leave empty to launch now").
+  local inputLongofAN is advanced:addtextfield("").
   advanced:hide().
   // tools
   set tools:style:width to 30.
@@ -174,9 +178,10 @@ local function main
       set inclination to inputInclination:text:tonumber(200).
     else
       set inclination to inputInclinationAdv:text:tonumber(200).
-    set LongofAN to inputLongofAN:text:tonumber(-1).
+    set LongofAN to (choose 666 if inputLongofAN:text = "" else inputLongofAN:text:tonumber(-1)).
     set RCSToggle to inputRCSToggle:pressed.
     set autoWarp to inputWarp:pressed.
+    set thrustLimit to inputThrustLimit:text:tonumber(-1).
     set StartTurn to inputStartTurn:text:tonumber(-1).
     set profile to inputProfile:text:tonumber(-1).
     //fail conditions
@@ -190,6 +195,13 @@ local function main
       set check to false.
       hudtext("Incorrect inclination, must be between " + ceiling(abs(latitude), 1) + " and " + (180 - ceiling(abs(latitude), 1)), 10, 2, 24, red, false).
     }
+    if thrustLimit <= 1 and thrustLimit <> 0
+    {
+      set check to false.
+      hudtext("Incorrect thrust limit, must be greater than 1", 10, 2, 24, red, false).
+    }
+    if thrustLimit = 0
+      set thrustLimit to 9000.
     if StartTurn < 0
     {
       set check to false.
@@ -212,7 +224,7 @@ local function main
         set check to false.
         hudtext("Incorrect argument of periapsis, must be between 0 and 360", 10, 2, 24, red, false).
       }
-      if LongofAN < 0 or LongofAN >= 360
+      if (LongofAN < 0 or LongofAN >= 360) and longOfAN <> 666
       {
         set check to false.
         hudtext("Incorrect longitude of ascending node, must be between 0 and 360", 10, 2, 24, red, false).
@@ -230,7 +242,7 @@ local function main
   local flight is lexicon("azimuth", -ship:bearing, "pitch", 90, "profile", profile, "upwards", true, "LastTime",
   missionTime + 10, "LastLatitude", latitude, "throttle", 0, "margin", margin, "twr", 0, "StartTurn", StartTurn,
   "yeet", heading(-ship:bearing, 90), "autoWarp", autoWarp, "trigger", false, "lastAcceleration", 0, "timeToManeuver", 0,
-  "thrustloss", false, "counter", missionTime).
+  "thrustloss", false, "counter", missionTime, "thrustLimit", thrustLimit).
   local targetOrbit is lexicon("periapsis", height, "apoapsis", targetAp, "inclination", inclination,
   "longofAN", LongofAN, "argofPe", ArgofPe, "warpcheck", 0, "semiMajorAxis", (height + targetAp + 2 * body:radius) / 2,
   "CurrentSpeed", 0, "TargetSpeed", 0, "OrbitType", 0).
@@ -283,7 +295,7 @@ local function main
     // readouts
     if CurrentStage >= 0
       set stageread:text to CurrentStage:tostring.
-    set throttleread:text to min(round(flight:throttle, 2), 1):tostring.
+    set throttleread:text to max(min(round(flight:throttle, 2), 1), 0):tostring.
     set accelerationread:text to round(curacc, 2):tostring + " m/s²".
     set pitchread:text to round(flight:pitch, 2):tostring.
     set headingread:text to round(flight:azimuth, 2):tostring.
@@ -391,8 +403,8 @@ local function Staging // auto staging based on numbered fuel tanks
 local function Countdown
 {
   parameter flight, targetOrbit, waiting.
-  if flight:timeToManeuver = 0 and targetOrbit:OrbitType = 1
-    set flight:timeToManeuver to StartAngle(targetOrbit).
+  if flight:timeToManeuver = 0 and targetOrbit:OrbitType = 1 and targetOrbit:longOfAN <> 666
+    set flight:timeToManeuver to StartAngle(targetOrbit, flight).
   if time:seconds > flight:timeToManeuver - 6
   {
     local x is 5.
@@ -451,17 +463,20 @@ local function AtmosphericFlight // steering while in atmosphere
       set pitchPID:LastTime to CurrentTime.
     }
     set output to pitchPID:TargetPitch + pitchPID:p * pitchPID:kp + pitchPID:i * pitchPID:ki + pitchPID:d * pitchPID:kd.
-    set flight:pitch to max(0, min(90, max(vector - 10, min(vector + 15, output)))).
+    if ship:velocity:surface:mag > 10
+      set flight:pitch to max(0, min(90, max(vector - 10, min(vector + 15, output)))).
+    else
+      set flight:pitch to 90.
   }
   if body:atm:altitudepressure(altitude) > 0.001 and flight:twr > 0 // throttle control
   {
     if altitude > body:atm:height / 20
     {
       local thrt is 1 + (output - pitchPID:TargetPitch) * 0.1.
-      set flight:throttle to min(2 / flight:twr, max(1 / flight:twr, thrt)).
+      set flight:throttle to min(flight:thrustLimit / flight:twr, max(1 / flight:twr, thrt)).
     }
     else
-      set flight:throttle to 2 / flight:twr.
+      set flight:throttle to flight:thrustLimit / flight:twr.
   }
   else
     set flight:throttle to 1.
@@ -475,24 +490,25 @@ local function AtmosphericFlight // steering while in atmosphere
 local function NonAtmosphericAscent // WIP
 {
   parameter flight.
-  local radius is body:radius + altitude.
-  if flight:StartTurn < 100
-    set flight:StartTurn to 100.
-  if ship:bounds:bottomaltradar > flight:StartTurn and flight:twr > 0
-  {
-    if gear
-      toggle gear.
-    set flight:throttle to 1 / flight:twr * 10.
-    if flight:twr > 5
-      set flight:pitch to arcSin((1.5 - (vxcl(up:vector, velocity:orbit):sqrmagnitude / radius) / (body:mu / radius ^ 2)) / 5).
-    else
-      set flight:pitch to arcSin(1.5 / flight:twr).
-  }
-  else
-    set flight:throttle to 1 / flight:twr * 2.
-  if apoapsis > flight:margin
-    return 4.
-  return 1.5.
+  return 1.
+  // local radius is body:radius + altitude.
+  // if flight:StartTurn < 100
+  //   set flight:StartTurn to 100.
+  // if ship:bounds:bottomaltradar > flight:StartTurn and flight:twr > 0
+  // {
+  //   if gear
+  //     toggle gear.
+  //   set flight:throttle to 1 / flight:twr * 10.
+  //   if flight:twr > 5
+  //     set flight:pitch to arcSin((1.5 - (vxcl(up:vector, velocity:orbit):sqrmagnitude / radius) / (body:mu / radius ^ 2)) / 5).
+  //   else
+  //     set flight:pitch to arcSin(1.5 / flight:twr).
+  // }
+  // else
+  //   set flight:throttle to 1 / flight:twr * 2.
+  // if apoapsis > flight:margin
+  //   return 4.
+  // return 1.5.
 }
 
 local function Direction // azimuth control
@@ -605,7 +621,8 @@ local function Circularization // circularizing the orbit
     else
       set flight:yeet to heading(flight:azimuth, 0).
   }
-  if periapsis > 0.99 * targetOrbit:periapsis and (eta:apoapsis < 3 / 4 * orbit:period and eta:apoapsis > orbit:period / 4)
+  if (periapsis > 0.99 * targetOrbit:periapsis and (eta:apoapsis < 3 / 4 * orbit:period and eta:apoapsis > orbit:period / 4))
+  or (periapsis > body:atm:height and velocity:orbit:mag > TargetSpeed)
   {
     set flight:throttle to 0.
     return 5.
@@ -706,19 +723,30 @@ local function timetoanomaly // time between two true anomalies
 
 local function StartAngle // start longitude from spherical triagles
 {
-  parameter targetOrbit.
+  parameter targetOrbit, flight.
   local alpha is targetOrbit:inclination.
-  local beta is arcsin(cos(targetOrbit:inclination) / cos(latitude)).
-  local c is arccos((cos(alpha)*cos(beta))/(sin(alpha)*sin(beta))).
-  local b is 90.
-  local a is 90 - latitude.
-  local angle is arccos((cos(c)-cos(a)*cos(b))/(sin(a)*sin(b))).
+  local angle is 0.
+  if alpha <> 90
+  {
+    local beta is arcsin(cos(alpha) / cos(latitude)).
+    local c is arccos((cos(alpha)*cos(beta))/(sin(alpha)*sin(beta))).
+    local b is 90.
+    local a is 90 - latitude.
+    set angle to arccos((cos(c)-cos(a)*cos(b))/(sin(a)*sin(b))).
+  }
   local endangle is targetOrbit:longofAN + angle - body:rotationangle - longitude.
-  if (targetOrbit:inclination > 90 and latitude >= 0) or (targetOrbit:inclination <= 90 and latitude < 0)
+  if (alpha > 90 and latitude >= 0) or (alpha <= 90 and latitude < 0)
     set endangle to endangle - 2 * angle.
   until endangle >= 0 and endangle < 360
     set endangle to endangle + (choose 360 if endangle < 0 else -360).
-  return (endangle - 1) * body:rotationperiod / 360 + time:seconds.
+  local endangle2 is endangle - 180 + 2 * angle.
+  if alpha <= 90
+    set endangle2 to endangle + 180 - 2 * angle.
+  if endangle2 >= 360
+    set endangle2 to endangle2 - 360.
+  if endangle2 < endangle
+    set flight:upwards to false.
+  return ((choose endangle2 if endangle2 < endangle else endangle) - 1) * body:rotationperiod / 360 + time:seconds.
 }
 
 main().
