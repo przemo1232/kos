@@ -11,7 +11,9 @@ local function pidgenerator
   parameter reference, value, type is 0.
   local pid is lexicon(reference, value, "p", 0, "kp", 1, "i", 0, "ki", 1, "d", 0, "kd", 1, "lastp", 0, "lasttime", 0).
   if type = 2
+  {
     pid:add("lasti", 0).
+  }
   return pid.
 }
 
@@ -92,8 +94,8 @@ local function main
   set simplebutton:pressed to true.
   local simple is options:addvlayout().
   local advanced is options:addvlayout().
-  options:addlabel("Thrust limit on ascent (0 means no limit)").
-  local inputThrustLimit is options:addtextfield("0").
+  options:addlabel("Thrust limit on ascent (nothing means no limit)").
+  local inputThrustLimit is options:addtextfield("").
   options:addlabel("Ascent guidance start altitude").
   local inputStartTurn is options:addtextfield("0").
   local inputRCSToggle is options:addcheckbox("Toggle RCS above atmosphere?", false).
@@ -190,7 +192,7 @@ local function main
     set LongofAN to (choose 666 if inputLongofAN:text = "" else inputLongofAN:text:tonumber(-1)).
     set RCSToggle to inputRCSToggle:pressed.
     set autoWarp to inputWarp:pressed.
-    set thrustLimit to inputThrustLimit:text:tonumber(-1).
+    set thrustLimit to (choose 9000 if inputThrustLimit:text = "" else inputThrustLimit:text:tonumber(-1)).
     set StartTurn to inputStartTurn:text:tonumber(-1).
     set profile to inputProfile:text:tonumber(-1).
     //fail conditions
@@ -204,13 +206,11 @@ local function main
       set check to false.
       hudtext("Incorrect inclination, must be between " + ceiling(abs(latitude), 1) + " and " + (180 - ceiling(abs(latitude), 1)), 10, 2, 24, red, false).
     }
-    if thrustLimit <= 1 and thrustLimit <> 0
+    if thrustLimit <= 1
     {
       set check to false.
       hudtext("Incorrect thrust limit, must be greater than 1", 10, 2, 24, red, false).
     }
-    if thrustLimit = 0
-      set thrustLimit to 9000.
     if StartTurn < 0
     {
       set check to false.
@@ -251,7 +251,7 @@ local function main
   local flight is lexicon("azimuth", -ship:bearing, "pitch", 90, "profile", profile, "upwards", true, "LastLatitude", latitude,
   "throttle", 0, "margin", margin, "twr", 0, "StartTurn", StartTurn, "yeet", heading(-ship:bearing, 90), "autoWarp", autoWarp,
   "trigger", false, "lastAcceleration", 0, "timeToManeuver", 0, "thrustloss", false, "counter", missionTime,
-  "thrustLimit", thrustLimit, "startHeight", altitude, "throttleLimit", inputThrottleLimit:text:tonumber).
+  "thrustLimit", thrustLimit, "startHeight", altitude, "throttleLimit", inputThrottleLimit:text:tonumber, "startTime", missionTime).
   local targetOrbit is lexicon("periapsis", height, "apoapsis", targetAp, "inclination", inclination,
   "longofAN", LongofAN, "argofPe", ArgofPe, "warpcheck", 0, "semiMajorAxis", (height + targetAp + 2 * body:radius) / 2,
   "CurrentSpeed", 0, "TargetSpeed", 0, "OrbitType", 0, "targetSpeed", 0).
@@ -547,7 +547,7 @@ local function Direction // azimuth control
       if flight:azimuth < 0
         set flight:azimuth to flight:azimuth + 360.
     }
-    if temp2 > 0.999 * maxLatitude
+    if missionTime > flight:startTime + 10
     {
       if flight:LastLatitude > latitude or latitude > maxLatitude // whether i'm going north or south
         set flight:upwards to false.
@@ -618,7 +618,7 @@ local function Circularization // circularizing the orbit
       set flight:throttle to max(1 / acceleration, speedDiff / 2 / acceleration).
     else if not(raise) and eta:apoapsis < 0.5 * orbit:period
       set flight:throttle to burntime / eta:apoapsis / 2.
-    else
+    else if not(raise)
       set flight:throttle to 1.
     local VerticalAcc is vxcl(up:vector, velocity:orbit):sqrmagnitude / (body:radius + altitude) - body:mu / (body:radius + altitude) ^ 2.
     if -VerticalAcc / (acceleration * flight:throttle) < 1
@@ -633,7 +633,7 @@ local function Circularization // circularizing the orbit
     else
       set flight:yeet to heading(flight:azimuth, 0).
   }
-  if velocity:orbit:sqrmagnitude > sqrTargetSpeed or periapsis > targetOrbit:periapsis
+  if periapsis > targetOrbit:periapsis
   {
     set flight:throttle to 0.
     return 5.
