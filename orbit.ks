@@ -318,7 +318,7 @@ local function main
       set CurrentStage to Staging(CurrentStage).
     if phase > 0 and ship:bounds:bottomaltradar > flight:StartTurn
     {
-      Direction(flight, inclination).
+      Direction(flight, inclination, phase).
     }
     if phase < 4
     {
@@ -521,7 +521,7 @@ local function NonAtmosphericAscent // WIP
 
 local function Direction // azimuth control
 {
-  parameter flight, inclination.
+  parameter flight, inclination, phase.
   if missionTime > flight:counter + 1
   {
     local scaling is 10.
@@ -540,14 +540,16 @@ local function Direction // azimuth control
       set compensation to 10 * (inclination - temp).
     if temp2 <= maxLatitude // what heading i should have
     {
-      if flight:upwards = true
+      if flight:upwards
         set flight:azimuth to arcsin(cos(inclination) / cos(temp2)) - compensation.
       else
         set flight:azimuth to -arcsin(cos(inclination) / cos(temp2)) + 180 + compensation.
       if flight:azimuth < 0
         set flight:azimuth to flight:azimuth + 360.
+      if (flight:upwards and flight:azimuth > 90 and flight:azimuth < 270) or (not(flight:upwards) and flight:azimuth > 270)
+        set flight:azimuth to 270.
     }
-    if missionTime > flight:startTime + 10
+    if phase >= 2 or temp2 > 0.999 * maxLatitude
     {
       if flight:LastLatitude > latitude or latitude > maxLatitude // whether i'm going north or south
         set flight:upwards to false.
@@ -555,7 +557,7 @@ local function Direction // azimuth control
         set flight:upwards to true.
       set flight:LastLatitude to latitude.
     }
-    set flight:counter to flight:counter + 1.
+    set flight:counter to missionTime.
   }
 }
 
@@ -571,7 +573,7 @@ local function Circularization // circularizing the orbit
   if acceleration > 0
   {
     set BurnTime to speedDiff / acceleration.
-    if BurnTime >= eta:apoapsis * 2 // turning the engine on and off
+    if BurnTime >= eta:apoapsis * 2 or verticalSpeed < 0 // turning the engine on and off
       set flight:trigger to true.
     else if BurnTime <= eta:apoapsis and periapsis < 0.99 * targetOrbit:periapsis and verticalSpeed > 0.1
     {
@@ -621,7 +623,7 @@ local function Circularization // circularizing the orbit
     else if not(raise)
       set flight:throttle to 1.
     local VerticalAcc is vxcl(up:vector, velocity:orbit):sqrmagnitude / (body:radius + altitude) - body:mu / (body:radius + altitude) ^ 2.
-    if -VerticalAcc / (acceleration * flight:throttle) < 1
+    if flight:throttle <> 0 and -VerticalAcc / (acceleration * flight:throttle) < 1
       set circPID:p to arcSin(-VerticalAcc / (acceleration * flight:throttle)).
     else
       set circPID:p to 90.
@@ -744,7 +746,9 @@ local function StartAngle // start longitude from spherical triagles
   if alpha <> 90
   {
     local beta is arcsin(cos(alpha) / cos(latitude)).
-    local c is arccos((cos(alpha)*cos(beta))/(sin(alpha)*sin(beta))).
+    local c is 0.
+    if abs((cos(alpha)*cos(beta))/(sin(alpha)*sin(beta))) < 1
+      set c to arccos((cos(alpha)*cos(beta))/(sin(alpha)*sin(beta))).
     local b is 90.
     local a is 90 - latitude.
     set angle to arccos((cos(c)-cos(a)*cos(b))/(sin(a)*sin(b))).
@@ -757,8 +761,8 @@ local function StartAngle // start longitude from spherical triagles
   local endangle2 is endangle - 180 + 2 * angle.
   if alpha <= 90
     set endangle2 to endangle + 180 - 2 * angle.
-  if endangle2 >= 360
-    set endangle2 to endangle2 - 360.
+  until endangle2 >= 0 and endangle2 < 360
+    set endangle2 to endangle2 + (choose 360 if endangle2 < 0 else -360).
   if endangle2 < endangle
     set flight:upwards to false.
   return ((choose endangle2 if endangle2 < endangle else endangle) - 1) * body:rotationperiod / 360 + time:seconds.
