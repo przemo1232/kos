@@ -546,7 +546,9 @@ local function Direction // azimuth control
         set flight:azimuth to -arcsin(cos(inclination) / cos(temp2)) + 180 + compensation.
       if flight:azimuth < 0
         set flight:azimuth to flight:azimuth + 360.
-      if (flight:upwards and flight:azimuth > 90 and flight:azimuth < 270) or (not(flight:upwards) and flight:azimuth > 270)
+      if (flight:upwards and flight:azimuth > 90 and flight:azimuth < 180) or (not(flight:upwards) and flight:azimuth < 90)
+        set flight:azimuth to 90.
+      if (flight:upwards and flight:azimuth > 180 and flight:azimuth < 270) or (not(flight:upwards) and flight:azimuth > 270)
         set flight:azimuth to 270.
     }
     if phase >= 2 or temp2 > 0.999 * maxLatitude
