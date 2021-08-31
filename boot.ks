@@ -7,27 +7,43 @@ until x > 4
   wait 1.
   set x to x + 1.
 }
+local oldbootname is core:part:getmodule("kOSProcessor"):bootfilename.
+local bootname is "".
+set x to 6.
+until x >= oldbootname:length
+{
+  set bootname to bootname + oldbootname[x].
+  set x to x + 1.
+}
 if x = 5
-  print "Connection failed.".
+  print "Connection failed".
 else
 {
-  set x to 6.
-  global newboot is "".
-  set bootname to core:part:getmodule("kOSProcessor"):bootfilename.
-  until x >= bootname:length
+  print "Connected".
+  local y is 0.
+  local newboot is "".
+  local files is core:part:getmodule("kOSProcessor"):volume:files.
+  until y >= files:length
   {
-    set newboot to newboot + bootname[x].
-    set x to x + 1.
+    if files:values[y]:size = 0
+      set newboot to files:values[y]:name.
+    set y to y + 1.
   }
-  on newboot
+  if newboot <> bootname and newboot <> ""
   {
-    set core:part:getmodule("kOSProcessor"):bootfilename to "/boot/" + newboot.
-    copypath("boot/" + bootname, "boot/" + newboot).
-    deletepath("boot/" + bootname).
-    set bootname to newboot.
-    return true.
+    if exists("0:/" + newboot)
+    {
+      set core:part:getmodule("kOSProcessor"):bootfilename to "/boot/" + newboot.
+      copypath("boot/" + bootname, "boot/" + newboot).
+      deletepath("boot/" + bootname).
+      deletepath(bootname).
+      copypath("0:/" + newboot, newboot).
+      print "Updating boot file".
+      wait 1.
+      reboot.
+    }
+    else
+      print "No file associated with this name".
   }
-  copypath("0:/" + newboot, newboot).
-  print "Connected and updated boot file.".
 }
-runpath(newboot).
+runpath(bootname).
