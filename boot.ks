@@ -43,7 +43,10 @@ else
       reboot.
     }
     else
+    {
       print "No file associated with this name".
+      deletepath(newboot).
+    }
   }
 }
 runpath(bootname).
