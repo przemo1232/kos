@@ -12,7 +12,7 @@ local bootname is "".
 local y is 6.
 until y >= oldbootname:length
 {
-  set bootname to bootname + oldbootname[x].
+  set bootname to bootname + oldbootname[y].
   set y to y + 1.
 }
 if x = 5
@@ -48,5 +48,7 @@ else
       deletepath(newboot).
     }
   }
+  else
+    copypath("0:/" + bootname, bootname).
 }
 runpath(bootname).
