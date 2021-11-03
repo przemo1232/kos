@@ -21,7 +21,7 @@ global function stagingSetup // initialization
   for part in ship:parts
   {
     for module in part:modules
-      if module = "LaunchClamp" and clamp > part:stage + 1
+      if module:matchespattern("LaunchClamp") and clamp > part:stage + 1
         set clamp to part:stage + 1.
     if part:resources:length > 0
     {
