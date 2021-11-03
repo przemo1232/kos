@@ -2,7 +2,6 @@
 
 @lazyGlobal off.
 
-
 global function stagingSetup // initialization
 {
   local tree is list().
@@ -21,8 +20,8 @@ global function stagingSetup // initialization
   for part in ship:parts
   {
     for module in part:modules
-      if module:matchespattern("LaunchClamp") and clamp > part:stage + 1
-        set clamp to part:stage + 1.
+      if module:matchespattern("LaunchClamp") and clamp > part:stage
+        set clamp to part:stage.
     if part:resources:length > 0
     {
       if part:hasmodule("moduleEnginesFX")
@@ -72,54 +71,63 @@ global function stagingSetup // initialization
   local x is 0.
   for stageList in fuels
   {
-    for tank in tree[x]
+    local y is 0.
+    for fuel in stageList
     {
-      for resource in tank:resources
+      stageResources[x]:add(list(fuel)).
+      for tank in tree[x]
       {
-        for fuel in stageList
+        for resource in tank:resources
         {
-          if resource:name = fuel
+          if resource:name = stageResources[x][y][0]
           {
             local check is true.
-            if stageResources[x]:contains(resource)
+            if stageResources[x][y]:contains(resource) // way faster than manually checking the entire list
               set check to false.
             if check
             {
-              stageResources[x]:add(resource).
+              stageResources[x][y]:add(resource).
               break.
             }
           }
         }
       }
+      stageResources[x][y]:remove(0).
+      set y to y + 1.
     }
     set x to x + 1.
   }
-  return list(fuels, stageResources, clamp).
+  return list(stageResources, clamp, ship:stagenum).
 }
 
 global function autoStaging // loop
 {
   parameter stagingList.
-  local fuels is stagingList[0].
-  local stageResources is stagingList[1].
-  local clamp is stagingList[2].
+  local stageResources is stagingList[0].
+  local clamp is stagingList[1].
   if stage:ready
   {
-    local shouldStage is false.
+    local shouldStage is true.
     local x is ship:stagenum.
-    for resource in stageResources[x]
+    for resourceType in stageResources[x]
     {
-      if fuels[x]:contains(resource:name) // way faster than manually checking the entire list
+      set shouldStage to true.
+      for resource in resourceType
       {
-        if resource:amount / resource:capacity < 1e-4
+        if resource:amount / resource:capacity > 1e-4
         {
-          set shouldStage to true.
+          set shouldStage to false.
           break.
         }
       }
+      if shouldStage
+        break.
     }
-    if x >= clamp
+    if x >= clamp and x <= stagingList[2]
+    {
+      set stagingList[2] to stagingList[2] - 1.
       return true.
+    }
     else if shouldStage
     {
       until x < 1
