@@ -1,3 +1,5 @@
+// create(filename) and reboot to switch boot file
+
 local x is 0.
 until x > 4
 {

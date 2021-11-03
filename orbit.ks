@@ -1,8 +1,7 @@
 // by przemo1232
-// navigation to orbit
-// auto staging relies on tagged fuel tanks: when a tank tagged "0", "1", "2" etc is empty, the script stages until rocket has thrust
-// the script will not release launch clamps if there already is thrust
+// navigation to orbit with auto staging
 // higher profile parameter means shallower ascent (it has to be bigger than 0)
+// dependencies: /lib/staging.ks
 
 @lazyGlobal off.
 
@@ -19,6 +18,9 @@ local function pidgenerator
 
 local function main
 {
+  if not(exists("1:/lib/staging.ks"))
+    copypath("0:/lib/staging.ks", "1:/lib/staging.ks").
+  runOncePath("1:/lib/staging.ks").
   set terminal:height to 36.
   set terminal:width to 50.
   if not (status = "landed" or status = "prelaunch")
@@ -248,6 +250,8 @@ local function main
   set maingui:style:width to 444.
   set maingui:style:height to 180.
   // initialization
+  local setupTime is time:seconds.
+  hudtext("setting up, please wait", 1, 2, 20, yellow, false).
   local flight is lexicon("azimuth", -ship:bearing, "pitch", 90, "profile", profile, "upwards", true, "LastLatitude", latitude,
   "throttle", 0, "margin", margin, "twr", 0, "StartTurn", StartTurn, "yeet", heading(-ship:bearing, 90), "autoWarp", autoWarp,
   "trigger", true, "lastAcceleration", 0, "timeToManeuver", 0, "thrustloss", false, "counter", missionTime,
@@ -260,7 +264,6 @@ local function main
     set targetOrbit:OrbitType to 1.
   local phase is 0.
   local finished is false.
-  local CurrentStage is 0.
   local CircPID is pidgenerator("UpSpeed", 0).
   local PitchPID is pidgenerator("TargetPitch", 90, 2).
   set PitchPID:kp to inputP:text:tonumber.
@@ -272,6 +275,10 @@ local function main
   local delay is 0.
   lock throttle to flight:throttle.
   lock steering to flight:yeet.
+  local shouldStage is false.
+  local stagingList is stagingSetup().
+  hudtext("setup done in " + round((time:seconds - setuptime), 2):tostring + " s", 1, 2, 20, yellow, true).
+  wait 1.
   // finish initialization, begin main loop
   until finished
   {
@@ -303,8 +310,7 @@ local function main
     set curacc to acceleration * min(flight:throttle, 1).
     set flight:twr to acceleration / gravity.
     // readouts
-    if CurrentStage >= 0
-      set stageread:text to CurrentStage:tostring.
+    set stageread:text to ship:stagenum:tostring.
     set throttleread:text to max(min(round(flight:throttle, 2), 1), 0):tostring.
     set accelerationread:text to round(curacc, 2):tostring + " m/s²".
     set pitchread:text to round(flight:pitch, 2):tostring.
@@ -315,8 +321,15 @@ local function main
     set LnofANread:text to round(orbit:longitudeofascendingnode, 1):tostring.
     set ArgofPeread:text to round(orbit:argumentofperiapsis, 1):tostring.
     // end readouts
-    if missionTime > 0
-      set CurrentStage to Staging(CurrentStage).
+    if phase > 0
+    {
+      set shouldStage to autoStaging(stagingList).
+      if shouldStage
+      {
+        set flight:throttle to 0.
+        stage.
+      }
+    }
     if phase > 0 and ship:bounds:bottomaltradar > flight:StartTurn
     {
       Direction(flight, inclination, phase).
@@ -328,7 +341,7 @@ local function main
     if phase = 0
     {
       set phase to Countdown(flight, targetOrbit, waiting, warpParameters).
-      if phase = 1
+      if phase >= 1
       {
         set flight:counter to missionTime.
         set flight:timeToManeuver to 0.
@@ -381,30 +394,6 @@ local function main
     }
     wait 0.
   }
-}
-
-local function Staging // auto staging based on numbered fuel tanks
-{
-  parameter x.
-  local ready is stage:ready.
-  if x >= 0 and ship:partsdubbed(x:tostring):length > 0
-  {
-    for y in ship:partsdubbed(x:tostring)[0]:resources
-      if y:amount = 0 and y:name <> "ElectricCharge" and ready
-      {
-        stage.
-        set ready to false.
-        set x to x + 1.
-        break.
-      }
-    if ready and ship:availablethrust = 0 // extra staging if needed
-      stage.
-  }
-  else if x >= 0 and ship:partsdubbed((x + 1):tostring):length > 0
-    set x to x + 1.
-  else
-    set x to -1.
-  return x.
 }
 
 local function Countdown
@@ -789,7 +778,7 @@ local function safeWarp // warp with a margin to correct heading (absolute time)
     }
     if parameters:check = -5
     {
-      warpto(parameters:time - 15).
+      warpto(parameters:time - 10).
       set parameters:check to 5.
     }
   }
