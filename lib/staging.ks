@@ -7,7 +7,13 @@ global function stagingSetup // initialization
   local tree is list().
   local fuels is list().
   local stageResources is list().
-  until tree:length > stage:number
+  local stages is 0.
+  if ship:status <> "preLaunch"
+    for part in ship:parts
+      if part:stage > stages
+        set stages to part:stage.
+  set stages to choose stage:number if stage:number > stages else stages.
+  until tree:length > stages
   {
     tree:add(list()).
     fuels:add(list()).
@@ -24,7 +30,7 @@ global function stagingSetup // initialization
         set clamp to part:stage.
     if part:resources:length > 0
     {
-      if part:hasmodule("moduleEnginesFX")
+      if part:hassuffix("isp")
       {
         if not(part:stage = part:separatedin)
           tree[part:separatedin + 1]:add(part).
@@ -32,7 +38,6 @@ global function stagingSetup // initialization
       else
         tree[part:stage + 1]:add(part).
     }
-    
   }
   // fuels used in each stage
   for engine in engineList
