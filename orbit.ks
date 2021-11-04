@@ -18,7 +18,7 @@ local function pidgenerator
 
 local function main
 {
-  if not(exists("1:/lib/staging.ks"))
+  // if not(exists("1:/lib/staging.ks"))
     copypath("0:/lib/staging.ks", "1:/lib/staging.ks").
   runOncePath("1:/lib/staging.ks").
   set terminal:height to 36.
@@ -412,11 +412,6 @@ local function Countdown
       wait 1.
     }
     set flight:throttle to 1.
-    until ship:availablethrust > 0
-    {
-      stage.
-      wait until stage:ready.
-    }
     if body:atm:exists
       return 1.
     return 1.5.

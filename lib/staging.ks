@@ -93,7 +93,10 @@ global function stagingSetup // initialization
         }
       }
       stageResources[x][y]:remove(0).
-      set y to y + 1.
+      if stageResources[x][y]:length = 0
+        stageResources[x]:remove(y).
+      else
+        set y to y + 1.
     }
     set x to x + 1.
   }
