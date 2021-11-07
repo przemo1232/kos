@@ -436,6 +436,7 @@ local function AtmosphericFlight // steering while in atmosphere
   local CurrentTime is missionTime.
   local output is 90.
   local vector is 90 - vang(up:vector, ship:velocity:surface).
+  local maxDeviation is max(1, min(10, 20 * altitude / body:atm:height)).
   set pitchPID:TargetPitch to 90 - arcTan(flight:profile * temp / sqrt((body:atm:height + flight:margin) ^ 2 - temp ^ 2)).
   set pitchPID:p to pitchPID:TargetPitch - vector.
   if ship:bounds:bottomaltradar > flight:StartTurn // pitch control
@@ -457,7 +458,7 @@ local function AtmosphericFlight // steering while in atmosphere
     }
     set output to pitchPID:TargetPitch + pitchPID:p * pitchPID:kp + pitchPID:i * pitchPID:ki + pitchPID:d * pitchPID:kd.
     if ship:velocity:surface:mag > 10
-      set flight:pitch to max(0, min(90, max(vector - 10, min(vector + 15, output)))).
+      set flight:pitch to max(0, min(90, max(vector - maxDeviation, min(vector + maxDeviation * 1.5, output)))).
     else
       set flight:pitch to 90.
   }
