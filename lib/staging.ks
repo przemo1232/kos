@@ -8,10 +8,15 @@ global function stagingSetup // initialization
   local fuels is list().
   local stageResources is list().
   local stages is 0.
+  local clamp is 9000.
   if ship:status <> "preLaunch"
+  {
     for part in ship:parts
       if part:stage > stages
         set stages to part:stage.
+  }
+  else
+    set clamp to ship:stagenum.
   set stages to choose stage:number if stage:number > stages else stages.
   until tree:length > stages
   {
@@ -22,7 +27,6 @@ global function stagingSetup // initialization
   local engineList is list().
   list engines in engineList.
   // staging tree and clamps
-  local clamp is 9000.
   for part in ship:parts
   {
     for module in part:modules
