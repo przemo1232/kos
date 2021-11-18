@@ -83,12 +83,12 @@ global function stagingSetup // initialization
     local y is 0.
     for fuel in stageList
     {
-      stageResources[x]:add(list(fuel)).
+      stageResources[x]:add(list()).
       for tank in tree[x]
       {
         for resource in tank:resources
         {
-          if resource:name = stageResources[x][y][0]
+          if resource:name = fuel
           {
             local check is true.
             if stageResources[x][y]:contains(resource) // way faster than manually checking the entire list
@@ -101,7 +101,6 @@ global function stagingSetup // initialization
           }
         }
       }
-      stageResources[x][y]:remove(0).
       if stageResources[x][y]:length = 0
         stageResources[x]:remove(y).
       else
@@ -109,7 +108,7 @@ global function stagingSetup // initialization
     }
     set x to x + 1.
   }
-  return list(stageResources, clamp, ship:stagenum).
+  return list(stageResources, clamp).
 }
 
 global function autoStaging // loop
@@ -135,20 +134,15 @@ global function autoStaging // loop
       if shouldStage
         break.
     }
-    if x >= clamp and x <= stagingList[2]
-    {
-      set stagingList[2] to stagingList[2] - 1.
+    if x > clamp
       return true.
-    }
     else if shouldStage
     {
       until x < 1
       {
         set x to x - 1.
         if stageResources[x]:length > 0
-        {
           return true.
-        }
       }
     }
   }
