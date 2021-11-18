@@ -12,15 +12,16 @@ local function pidgenerator
   if type = 2
   {
     pid:add("lasti", 0).
+    pid:add("kp2", 1).
   }
   return pid.
 }
 
 local function main
 {
-  if not(exists("1:/lib/staging.ks"))
-    copypath("0:/lib/staging.ks", "1:/lib/staging.ks").
-  runOncePath("1:/lib/staging.ks").
+  if not(exists("/lib/staging.ks"))
+    copypath("0:/kos/lib/staging.ks", "/lib/staging.ks").
+  runOncePath("/lib/staging.ks").
   set terminal:height to 36.
   set terminal:width to 50.
   if not (status = "landed" or status = "prelaunch")
@@ -269,6 +270,7 @@ local function main
   set PitchPID:kp to inputP:text:tonumber.
   set PitchPID:ki to inputI:text:tonumber.
   set PitchPID:kd to inputD:text:tonumber.
+  set PitchPID:kp2 to PitchPID:kp / 5.
   local gravity is 0.
   local acceleration is 0.
   local curacc is 0.
@@ -436,7 +438,6 @@ local function AtmosphericFlight // steering while in atmosphere
   local CurrentTime is missionTime.
   local output is 90.
   local vector is 90 - vang(up:vector, ship:velocity:surface).
-  local maxDeviation is max(1, min(10, 20 * altitude / body:atm:height)).
   set pitchPID:TargetPitch to 90 - arcTan(flight:profile * temp / sqrt((body:atm:height + flight:margin) ^ 2 - temp ^ 2)).
   set pitchPID:p to pitchPID:TargetPitch - vector.
   if ship:bounds:bottomaltradar > flight:StartTurn // pitch control
@@ -453,12 +454,10 @@ local function AtmosphericFlight // steering while in atmosphere
       set pitchPID:lasti to pitchPID:i.
     }
     else if pitchPID:LastTime = 0
-    {
       set pitchPID:LastTime to CurrentTime.
-    }
-    set output to pitchPID:TargetPitch + pitchPID:p * pitchPID:kp + pitchPID:i * pitchPID:ki + pitchPID:d * pitchPID:kd.
+    set output to pitchPID:TargetPitch + pitchPID:p * (choose pitchPID:kp if pitchPID:targetPitch < 85 else pitchPID:kp2) + pitchPID:i * pitchPID:ki + pitchPID:d * pitchPID:kd.
     if ship:velocity:surface:mag > 10
-      set flight:pitch to max(0, min(90, max(vector - maxDeviation, min(vector + maxDeviation * 1.5, output)))).
+      set flight:pitch to max(0, min(90, max(vector - 10, min(vector + 20, output)))).
     else
       set flight:pitch to 90.
   }
@@ -466,7 +465,7 @@ local function AtmosphericFlight // steering while in atmosphere
   {
     if altitude > body:atm:height / 20
     {
-      local thrt is 1 + (output - pitchPID:TargetPitch) * flight:throttleLimit.
+      local thrt is 1 + (output - pitchPID:TargetPitch + 2) * flight:throttleLimit.
       set flight:throttle to min(flight:thrustLimit / flight:twr, max(1 / flight:twr, thrt)).
     }
     else
