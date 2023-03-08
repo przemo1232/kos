@@ -35,6 +35,7 @@ local function main
   local inclination is 0.
   local LongofAN is 0.
   local RCSToggle is false.
+  local FairingSep is false.
   local autoWarp is true.
   local thrustLimit is 0.
   local StartTurn is 0.
@@ -103,6 +104,7 @@ local function main
   local inputStartTurn is options:addtextfield("0").
   local inputRCSToggle is options:addcheckbox("Toggle RCS above atmosphere?", false).
   local inputWarp is options:addcheckbox("Auto warp?", true).
+  local inputFairingSep is options:addcheckbox("Activate action 10 above atmosphere?", true).
   options:addspacing(30).
   local ready is options:addbutton("Ready"). 
   // dev
@@ -194,6 +196,7 @@ local function main
       set inclination to inputInclinationAdv:text:tonumber(200).
     set LongofAN to (choose 666 if inputLongofAN:text = "" else inputLongofAN:text:tonumber(-1)).
     set RCSToggle to inputRCSToggle:pressed.
+    set FairingSep to inputFairingSep:pressed.
     set autoWarp to inputWarp:pressed.
     set thrustLimit to (choose 9000 if inputThrustLimit:text = "" else inputThrustLimit:text:tonumber(-1)).
     set StartTurn to inputStartTurn:text:tonumber(-1).
@@ -330,6 +333,11 @@ local function main
       {
         set flight:throttle to 0.
         stage.
+      }
+      if FairingSep and altitude > body:atm:height
+      {
+        toggle ag10.
+        set FairingSep to false.
       }
     }
     if phase > 0 and ship:bounds:bottomaltradar > flight:StartTurn
