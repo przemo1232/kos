@@ -51,7 +51,7 @@ global function stagingSetup // initialization
     for fuelKey in engine:consumedResources:keys
       keys:add(fuelKey).
     local fuelType is engine:consumedResources.
-    until y <= engine:separatedin or y = 0
+    until y <= engine:separatedin or y < 0
     {
       local x is 0.
       until x > fuels[y]:length or x = keys:length
@@ -118,6 +118,8 @@ global function autoStaging // loop
   local clamp is stagingList[1].
   if stage:ready
   {
+    if ship:status = "preLaunch"
+      return true.
     local shouldStage is true.
     local x is ship:stagenum.
     for resourceType in stageResources[x]
