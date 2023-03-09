@@ -35,7 +35,7 @@ local function main
   local inclination is 0.
   local LongofAN is 0.
   local RCSToggle is false.
-  local FairingSep is false.
+  local FairingSep is 0.
   local autoWarp is true.
   local thrustLimit is 0.
   local StartTurn is 0.
@@ -196,7 +196,8 @@ local function main
       set inclination to inputInclinationAdv:text:tonumber(200).
     set LongofAN to (choose 666 if inputLongofAN:text = "" else inputLongofAN:text:tonumber(-1)).
     set RCSToggle to inputRCSToggle:pressed.
-    set FairingSep to inputFairingSep:pressed.
+    if inputFairingSep:pressed
+      set FairingSep to 3.
     set autoWarp to inputWarp:pressed.
     set thrustLimit to (choose 9000 if inputThrustLimit:text = "" else inputThrustLimit:text:tonumber(-1)).
     set StartTurn to inputStartTurn:text:tonumber(-1).
@@ -334,10 +335,10 @@ local function main
         set flight:throttle to 0.
         stage.
       }
-      if FairingSep and altitude > body:atm:height
+      if FairingSep > 0 and altitude > body:atm:height
       {
         toggle ag10.
-        set FairingSep to false.
+        set FairingSep to FairingSep - 1.
       }
     }
     if phase > 0 and ship:bounds:bottomaltradar > flight:StartTurn
@@ -559,7 +560,7 @@ local function Direction // azimuth control
 local function Circularization // circularizing the orbit
 {
   parameter flight, targetOrbit, acceleration, circPID, waiting, warpParameters.
-  local raise is (apoapsis < targetOrbit:periapsis). // raising the ap
+  local raise is (apoapsis < targetOrbit:periapsis * 1.01). // raising the ap
   local CurrentSpeed is velocityat(ship, time() + eta:apoapsis):orbit:mag.
   local sqrTargetSpeed is body:mu / (body:radius + targetOrbit:periapsis).
   local TargetSpeed is sqrt(sqrTargetSpeed).
@@ -625,7 +626,7 @@ local function Circularization // circularizing the orbit
     else
       set flight:yeet to heading(flight:azimuth, 0).
   }
-  if periapsis > targetOrbit:periapsis or (periapsis > 0.99 * altitude and eta:apoapsis > orbit:period * 0.2)
+  if periapsis > targetOrbit:periapsis
   {
     set flight:throttle to 0.
     return 5.
