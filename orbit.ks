@@ -559,7 +559,7 @@ local function Direction // azimuth control
 local function Circularization // circularizing the orbit
 {
   parameter flight, targetOrbit, acceleration, circPID, waiting, warpParameters.
-  local raise is (apoapsis < targetOrbit:periapsis). // raising the ap
+  local raise is (apoapsis < targetOrbit:periapsis * 1.01). // raising the ap
   local CurrentSpeed is velocityat(ship, time() + eta:apoapsis):orbit:mag.
   local sqrTargetSpeed is body:mu / (body:radius + targetOrbit:periapsis).
   local TargetSpeed is sqrt(sqrTargetSpeed).
@@ -605,6 +605,7 @@ local function Circularization // circularizing the orbit
   }
   else if acceleration > 0 // throttle and attitude control
   {
+    set waiting:text to "".
     if (periapsis + body:radius) > 0.95 * (targetOrbit:periapsis + body:radius)
       set flight:throttle to max(1 / acceleration, speedDiff / 2 / acceleration).
     else if not(raise) and eta:apoapsis < 0.5 * orbit:period
