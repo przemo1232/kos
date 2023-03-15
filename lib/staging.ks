@@ -8,7 +8,7 @@ global function stagingSetup // initialization
   local fuels is list().
   local stageResources is list().
   local stages is 0.
-  local clamp is 9000.
+  local clamp is 0.
   if ship:status <> "preLaunch"
   {
     for part in ship:parts
@@ -30,8 +30,8 @@ global function stagingSetup // initialization
   for part in ship:parts
   {
     for module in part:modules
-      if module:matchespattern("LaunchClamp") and clamp > part:stage
-        set clamp to part:stage.
+      if module:matchespattern("LaunchClamp")
+        set clamp to ship:parts:length.
     if part:resources:length > 0
     {
       if part:hassuffix("isp")
@@ -118,7 +118,7 @@ global function autoStaging // loop
   local clamp is stagingList[1].
   if stage:ready
   {
-    if ship:status = "preLaunch"
+    if ship:parts:length = clamp
       return true.
     local shouldStage is true.
     local x is ship:stagenum.
@@ -136,9 +136,7 @@ global function autoStaging // loop
       if shouldStage
         break.
     }
-    if x > clamp
-      return true.
-    else if shouldStage
+    if shouldStage
     {
       until x < 1
       {
