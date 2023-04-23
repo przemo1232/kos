@@ -15,7 +15,7 @@ global function deltavSetup
   local engineList is list().
   list engines in engineList.
   local engineStages is list().
-  local tempList is deltavStageMasses().
+  local tempList is deltavStageMasses(stagingList[0]).
   local stageMass is tempList[0].
   local fuelLines is tempList[1].
   local stageISP is list().
@@ -83,8 +83,30 @@ global function deltavBurnTime // maybe later to add support to more rockets
 
 }
 
+global function deltavFuelCheck // add not used resources to drymass
+{
+  parameter stageResources, part.
+  local addedMass is 0.
+  for resource in part:resources
+  {
+    local addMass is true.
+    for check in stageResources[part:decoupledin + 1]
+      if resource:name = check[0]:name
+      {
+        set addMass to false.
+        break.
+      }
+    if addMass
+    {
+      set addedMass to addedMass + resource:density * resource:amount.
+    }
+  }
+  return addedMass.
+}
+
 global function deltavStageMasses // stage mass and fuel lines
 {
+  parameter stageResources.
   local stageMass is list().
   local fuelLine is list().
   until stageMass:length > ship:stagenum
@@ -96,7 +118,7 @@ global function deltavStageMasses // stage mass and fuel lines
   {
     if part:stage < 0
     {
-      set stageMass[part:decoupledin + 1][0] to stageMass[part:decoupledin + 1][0] + part:drymass.
+      set stageMass[part:decoupledin + 1][0] to stageMass[part:decoupledin + 1][0] + part:drymass + deltavFuelCheck(stageResources, part).
       set stageMass[part:decoupledin + 1][1] to stageMass[part:decoupledin + 1][1] + part:mass.
     }
     else if not(part:hasmodule("ModuleDecouple") or part:hasmodule("ModuleAnchoredDecoupler"))
@@ -107,8 +129,8 @@ global function deltavStageMasses // stage mass and fuel lines
           set shouldAdd to false.
       if shouldAdd
       {
-      set stageMass[part:decoupledin + 1][0] to stageMass[part:decoupledin + 1][0] + part:drymass.
-      set stageMass[part:decoupledin + 1][1] to stageMass[part:decoupledin + 1][1] + part:mass.
+        set stageMass[part:decoupledin + 1][0] to stageMass[part:decoupledin + 1][0] + part:drymass + deltavFuelCheck(stageResources, part).
+        set stageMass[part:decoupledin + 1][1] to stageMass[part:decoupledin + 1][1] + part:mass.
       }
     }
     else
@@ -139,7 +161,6 @@ global function deltavStageMasses // stage mass and fuel lines
 global function deltavUpdate
 {
   parameter x.
-  // print "test".
   local stageMass is x:stageMass.
   local stageISP is x:stageISP.
   local stageDeltav is list().
@@ -155,7 +176,6 @@ global function deltavUpdate
     set stageDeltav[i] to stageISP[i] * constant:g0 * ln(ship:mass / stageMass[i][0]).
   else
     set stageDeltav[i] to stageISP[i] * constant:g0 * ln(stageMass[i][1] / stageMass[i][0]).
-  // print stageDeltav.
   log "stageDeltav:" to "0:/deltav.log".
   log stageDeltav to "0:/deltav.log".
   return stageDeltav.
