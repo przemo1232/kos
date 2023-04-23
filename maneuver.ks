@@ -6,9 +6,9 @@
 
 local function main
 {
-  if not(exists("deltav.ks"))
+  if not(exists("/lib/deltav.ks"))
     copypath("0:/lib/deltav.ks", "/lib/deltav.ks").
-  runOncePath("deltav.ks").
+  runOncePath("/lib/deltav.ks").
   if not(exists("/lib/staging.ks"))
     copypath("0:/lib/staging.ks", "/lib/staging.ks").
   runOncePath("/lib/staging.ks").
@@ -74,8 +74,13 @@ local function executeNode
     set burnTime to burnTime + thisBurnTime.
   }
   local burnStartTime is deltavCenter[0] / deltavCenter[1].
+  print deltav.
   lock steering to nextnode:deltav.
   // warpto(time:seconds + nextNode:eta - burnStartTime - 10).
+  print "Maneuver will end with stage " + stageNum.
+  print "deltav required from the last stage: " + round(requiredDeltav, 2).
+  print "the engines will be on for: " + round(burnTime, 2) + " s".
+  print "execution will start " + round(burnStartTime, 2) + " s before the node".
   wait until nextnode:eta < burnStartTime.
   lock throttle to 1.
   local startTime is time:seconds.
@@ -83,10 +88,6 @@ local function executeNode
     if autoStaging(stagingInfo)
       stage.
   lock throttle to 0.
-  print stageNum.
-  print requiredDeltav.
-  print burnTime.
-  print burnStartTime.
 }
 
 main().
