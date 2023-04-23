@@ -6,7 +6,7 @@
 
 global function deltavSetup
 {
-  parameter stagingList is list().
+  parameter stagingList is lexicon().
   if not(exists("/lib/staging.ks"))
     copypath("0:/lib/staging.ks", "/lib/staging.ks").
   runOncePath("/lib/staging.ks").
@@ -15,12 +15,13 @@ global function deltavSetup
   local engineList is list().
   list engines in engineList.
   local engineStages is list().
-  local tempList is deltavStageMasses(stagingList[0]).
+  local stageResources is stagingList:stageResources.
+  local tempList is deltavStageMasses(stageResources).
   local stageMass is tempList[0].
   local fuelLines is tempList[1].
   local stageISP is list().
   local stageBurnTime is list().
-  for currentStage in stagingList[0]
+  for currentStage in stageResources
     engineStages:add(list()).
   for engine in engineList
   {
@@ -38,7 +39,7 @@ global function deltavSetup
     if engineStages[i]:length <> 0
     {
       stageISP:add(deltavISPCalc(engineStages[i])).
-      stageBurnTime:add(deltavBurnTime(engineStages[i], stagingList[0][i])).
+      stageBurnTime:add(deltavBurnTime(engineStages[i], stageResources[i])).
     }
     else
     {
@@ -49,7 +50,7 @@ global function deltavSetup
   }
   deletepath("0:/deltav.log").
   log "stagingList:" to "0:/deltav.log".
-  log stagingList[0] to "0:/deltav.log".
+  log stageResources to "0:/deltav.log".
   log "engineStages:" to "0:/deltav.log".
   log engineStages to "0:/deltav.log".
   log "stageISP:" to "0:/deltav.log".
