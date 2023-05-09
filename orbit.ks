@@ -621,6 +621,8 @@ local function Circularization // circularizing the orbit
     local output is circPID:p * circPID:kp + circPID:d * circPID:kd.
       set flight:yeet to heading(flight:azimuth, min(45, max(0, output))).
   }
+  if acceleration = 0
+    set flight:throttle to 1.
   if periapsis > targetOrbit:periapsis
   {
     set flight:throttle to 0.
