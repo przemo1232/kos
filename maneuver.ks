@@ -6,6 +6,7 @@
 
 local function main
 {
+  parameter slowdown, cap.
   if not(exists("/lib/deltav.ks"))
     copypath("0:/lib/deltav.ks", "/lib/deltav.ks").
   runOncePath("/lib/deltav.ks").
@@ -13,13 +14,14 @@ local function main
     copypath("0:/lib/staging.ks", "/lib/staging.ks").
   runOncePath("/lib/staging.ks").
   if hasNode
-    executeNode().
+    executeNode(slowdown, cap).
   else
     print "no node found".
 }
 
 local function executeNode
 {
+  parameter slowdown, cap.
   local stagingInfo is stagingSetup().
   local deltavInfo is deltavSetup(stagingInfo).
   local engineStages is deltavInfo:engineStages.
@@ -53,7 +55,7 @@ local function executeNode
     {
       print "not enough deltav to execute node. Try anyway? (y/n)".
       local try is terminal:input:getchar().
-      if try <> "n" or try <> "N"
+      if try = "n" or try = "N"
         return.
     }
   }
@@ -81,16 +83,24 @@ local function executeNode
   print "deltav required from the last stage: " + round(requiredDeltav, 2).
   print "the engines will be on for: " + round(burnTime, 2) + " s".
   print "execution will start " + round(burnStartTime, 2) + " s before the node".
+  local thrt is 1.
+  local finishMass is stageMass[1] - thisBurnTime * totalMassFlow.
   wait until nextnode:eta < burnStartTime.
-  lock throttle to 1.
-  local startTime is time:seconds.
-  until time:seconds - startTime > burnTime
+  lock throttle to thrt.
+  until false //time:seconds - startTime > burnTime
+  {
+    if ship:stagenum = stagenum
+      set thrt to min(1, max(cap, (ship:mass - finishMass) / totalMassFlow / slowdown)).
     if autoStaging(stagingInfo)
       stage.
+    if ship:mass < finishMass
+      break.
+  }
   lock throttle to 0.
 }
 
-main().
+parameter slowdown is 1, cap is .1.
+main(slowdown, cap).
 
 // f - thrust
 // m - mass
