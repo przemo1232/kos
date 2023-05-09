@@ -1,5 +1,6 @@
 local function main
 {
+  wait until ship:unpacked.
   local x is 0.
   until x > 4
   {
