@@ -6,7 +6,7 @@
 
 local function main
 {
-  parameter slowdown, cap.
+  parameter slowdown, cap, finishCheck.
   if not(exists("/lib/deltav.ks"))
     copypath("0:/lib/deltav.ks", "/lib/deltav.ks").
   runOncePath("/lib/deltav.ks").
@@ -14,14 +14,14 @@ local function main
     copypath("0:/lib/staging.ks", "/lib/staging.ks").
   runOncePath("/lib/staging.ks").
   if hasNode
-    executeNode(slowdown, cap).
+    executeNode(slowdown, cap, finishCheck).
   else
     print "no node found".
 }
 
 local function executeNode
 {
-  parameter slowdown, cap.
+  parameter slowdown, cap, finishCheck.
   local stagingInfo is stagingSetup().
   local deltavInfo is deltavSetup(stagingInfo).
   local engineStages is deltavInfo:engineStages.
@@ -83,24 +83,40 @@ local function executeNode
   print "deltav required from the last stage: " + round(requiredDeltav, 2).
   print "the engines will be on for: " + round(burnTime, 2) + " s".
   print "execution will start " + round(burnStartTime, 2) + " s before the node".
-  local thrt is 1.
-  local finishMass is stageMass[1] - thisBurnTime * totalMassFlow.
   wait until nextnode:eta < burnStartTime.
+  local thrt is 1.
   lock throttle to thrt.
-  until false //time:seconds - startTime > burnTime
+  if finishCheck = "deltav"
   {
-    if ship:stagenum = stagenum
-      set thrt to min(1, max(cap, (ship:mass - finishMass) / totalMassFlow / slowdown)).
-    if autoStaging(stagingInfo)
-      stage.
-    if ship:mass < finishMass
-      break.
+    local startAngle is nextNode:deltav.
+    until false
+    {
+      if ship:stagenum = stagenum
+        set thrt to min(1, max(cap, nextNode:deltav:mag / (totalThrust / ship:mass) / slowdown)).
+      if autoStaging(stagingInfo)
+        stage.
+      if startAngle * nextNode:deltav < 0
+        break.
+    }
+  }
+  else
+  {
+    local finishMass is stageMass[1] - thisBurnTime * totalMassFlow.
+    until false
+    {
+      if ship:stagenum = stagenum
+        set thrt to min(1, max(cap, (ship:mass - finishMass) / totalMassFlow / slowdown)).
+      if autoStaging(stagingInfo)
+        stage.
+      if ship:mass < finishMass
+        break.
+    }
   }
   lock throttle to 0.
 }
 
-parameter slowdown is 1, cap is .1.
-main(slowdown, cap).
+parameter slowdown is 1, cap is .01, finishCheck is "deltav".
+main(slowdown, cap, finishCheck).
 
 // f - thrust
 // m - mass
