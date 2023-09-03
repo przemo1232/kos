@@ -20,8 +20,11 @@ local function pidgenerator
 local function main
 {
   if not(exists("/lib/staging.ks"))
-    copypath("0:/kos/lib/staging.ks", "/lib/staging.ks").
+    copypath("0:/lib/staging.ks", "/lib/staging.ks").
   runOncePath("/lib/staging.ks").
+  if not(exists("/lib/warp.ks"))
+    copypath("0:/lib/warp.ks", "/lib/warp.ks").
+  runOncePath("/lib/warp.ks").
   set terminal:height to 36.
   set terminal:width to 50.
   if not (status = "landed" or status = "prelaunch")
@@ -264,7 +267,7 @@ local function main
   local targetOrbit is lexicon("periapsis", height, "apoapsis", targetAp, "inclination", inclination,
   "longofAN", LongofAN, "argofPe", ArgofPe, "semiMajorAxis", (height + targetAp + 2 * body:radius) / 2,
   "CurrentSpeed", 0, "TargetSpeed", 0, "OrbitType", 0, "targetSpeed", 0).
-  local warpParameters is lexicon("check", 0, "time", 0, "aligned", true).
+  local warpParameters is lexicon("check", 0, "time", 0, "checkAligned", true).
   if advanced:visible
     set targetOrbit:OrbitType to 1.
   local phase is 0.
@@ -434,7 +437,7 @@ local function Countdown
     {
       if warpParameters:time = 0
         set warpParameters:time to flight:timeToManeuver.
-      set warpParameters:aligned to false.
+      set warpParameters:checkAligned to false.
       safewarp(warpParameters).
     }
   }
@@ -746,50 +749,6 @@ local function StartAngle // start longitude from spherical triagles
   if endangle2 < endangle
     set flight:upwards to false.
   return ((choose endangle2 if endangle2 < endangle else endangle) - 1) * body:rotationperiod / 360 + time:seconds.
-}
-
-local function safeWarp // warp with a margin to correct heading (absolute time)
-{
-  parameter parameters.
-  local warpTime is parameters:time - time:seconds.
-  if warpTime > 181 // warp to 3 minutes early
-  {
-    if kuniverse:timewarp:rate = 1 and parameters:check >= 0
-    {
-      if abs(steeringManager:angleerror) < 0.5 or not(parameters:aligned)
-        set parameters:check to parameters:check + 1.
-      else
-        set parameters:check to 0.
-    }
-    if parameters:check = 5
-    {
-      warpto(parameters:time - 180).
-      set parameters:check to -1.
-    }
-  }
-  else if warpTime > 16 and warpTime < 175 // correct heading and warp to 10 seconds early
-  {
-    if parameters:check > 0 and parameters:check < 5
-      set parameters:check to 0.
-    if kuniverse:timewarp:rate = 1 and parameters:check <= 0
-    {
-      if abs(steeringManager:angleerror) < 0.5 or not(parameters:aligned)
-        set parameters:check to parameters:check - 1.
-      else
-        set parameters:check to 0.
-    }
-    if parameters:check = -5
-    {
-      warpto(parameters:time - 10).
-      set parameters:check to 5.
-    }
-  }
-  else // resetting parameters
-  {
-    set parameters:time to 0.
-    set parameters:check to 0.
-    set parameters:aligned to true.
-  }
 }
 
 main().

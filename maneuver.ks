@@ -6,24 +6,25 @@
 
 local function main
 {
-  parameter slowdown, cap, finishCheck.
+  parameter doWarp, slowdown, cap, finishCheck.
   if not(exists("/lib/deltav.ks"))
     copypath("0:/lib/deltav.ks", "/lib/deltav.ks").
   runOncePath("/lib/deltav.ks").
-  if not(exists("/lib/staging.ks"))
-    copypath("0:/lib/staging.ks", "/lib/staging.ks").
-  runOncePath("/lib/staging.ks").
+  if not(exists("/lib/warp.ks"))
+    copypath("0:/lib/warp.ks", "/lib/warp.ks").
+  runOncePath("/lib/warp.ks").
   if hasNode
-    executeNode(slowdown, cap, finishCheck).
+    executeNode(doWarp, slowdown, cap, finishCheck).
   else
     print "no node found".
 }
 
 local function executeNode
 {
-  parameter slowdown, cap, finishCheck.
-  local stagingInfo is stagingSetup().
+  parameter doWarp, slowdown, cap, finishCheck, stagingInfo is lexicon().
   local deltavInfo is deltavSetup(stagingInfo).
+  if stagingInfo:length = 0
+    set stagingInfo to deltavInfo:stagingList.
   local engineStages is deltavInfo:engineStages.
   local deltav is deltavUpdate(deltavInfo).
   local stageNum is ship:stagenum.
@@ -57,6 +58,8 @@ local function executeNode
       local try is terminal:input:getchar().
       if try = "n" or try = "N"
         return.
+      else
+        break.
     }
   }
   if stageNum > -1
@@ -77,13 +80,19 @@ local function executeNode
   }
   local burnStartTime is deltavCenter[0] / deltavCenter[1].
   print deltav.
+  sas off.
   lock steering to nextnode:deltav.
   // warpto(time:seconds + nextNode:eta - burnStartTime - 10).
   print "Maneuver will end with stage " + stageNum.
   print "deltav required from the last stage: " + round(requiredDeltav, 2).
   print "the engines will be on for: " + round(burnTime, 2) + " s".
   print "execution will start " + round(burnStartTime, 2) + " s before the node".
-  wait until nextnode:eta < burnStartTime.
+  local warpParameters is lexicon("check", 0, "time", time:seconds + nextNode:eta - burnStartTime - 10, "checkAligned", true).
+  until nextnode:eta < burnStartTime
+  {
+    if doWarp
+      safeWarp(warpParameters).
+  }
   local thrt is 1.
   lock throttle to thrt.
   if finishCheck = "deltav"
@@ -113,10 +122,11 @@ local function executeNode
     }
   }
   lock throttle to 0.
+  hudtext("Maneuver executed", 10, 2, 24, green, false).
 }
 
-parameter slowdown is 1, cap is .01, finishCheck is "deltav".
-main(slowdown, cap, finishCheck).
+parameter doWarp is false, slowdown is 1, cap is .01, finishCheck is "deltav".
+main(doWarp, slowdown, cap, finishCheck).
 
 // f - thrust
 // m - mass

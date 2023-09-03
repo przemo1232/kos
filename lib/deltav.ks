@@ -1,6 +1,5 @@
 // deltav calculations, doesn't work with different flameout times (but does with asparagus(it's weird))
 // dependencies: /lib/staging.ks - stagingSetup result has to be passed as a parameter
-// TODO exclude resources that aren't consumed from drymass
 
 @lazyGlobal off.
 
@@ -61,7 +60,7 @@ global function deltavSetup
   log stageMass to "0:/deltav.log".
   log "fuelLines:" to "0:/deltav.log".
   log fuelLines to "0:/deltav.log".
-  return lexicon("stageMass", stageMass, "stageISP", stageISP, "engineStages", engineStages).
+  return lexicon("stageMass", stageMass, "stageISP", stageISP, "engineStages", engineStages, "stagingList", stagingList).
 }
 
 global function deltavISPCalc // weighted average of all ISP
@@ -159,7 +158,7 @@ global function deltavStageMasses // stage mass and fuel lines
   return list(stageMass, fuelLine).
 }
 
-global function deltavUpdate
+global function deltavUpdate // update for all stages
 {
   parameter x.
   local stageMass is x:stageMass.
