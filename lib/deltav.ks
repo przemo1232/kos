@@ -5,7 +5,7 @@
 
 global function deltavSetup
 {
-  parameter stagingList is lexicon().
+  parameter stagingList is lexicon(), logging is false.
   if not(exists("/lib/staging.ks"))
     copypath("0:/lib/staging.ks", "/lib/staging.ks").
   runOncePath("/lib/staging.ks").
@@ -47,19 +47,22 @@ global function deltavSetup
     }
     set i to i + 1.
   }
-  deletepath("0:/deltav.log").
-  log "stagingList:" to "0:/deltav.log".
-  log stageResources to "0:/deltav.log".
-  log "engineStages:" to "0:/deltav.log".
-  log engineStages to "0:/deltav.log".
-  log "stageISP:" to "0:/deltav.log".
-  log stageISP to "0:/deltav.log".
-  log "stageBurnTime:" to "0:/deltav.log".
-  log stageBurnTime to "0:/deltav.log".
-  log "stageMass:" to "0:/deltav.log".
-  log stageMass to "0:/deltav.log".
-  log "fuelLines:" to "0:/deltav.log".
-  log fuelLines to "0:/deltav.log".
+  if logging
+  {
+    deletepath("0:/deltav.log").
+    log "stagingList:" to "0:/deltav.log".
+    log stageResources to "0:/deltav.log".
+    log "engineStages:" to "0:/deltav.log".
+    log engineStages to "0:/deltav.log".
+    log "stageISP:" to "0:/deltav.log".
+    log stageISP to "0:/deltav.log".
+    log "stageBurnTime:" to "0:/deltav.log".
+    log stageBurnTime to "0:/deltav.log".
+    log "stageMass:" to "0:/deltav.log".
+    log stageMass to "0:/deltav.log".
+    log "fuelLines:" to "0:/deltav.log".
+    log fuelLines to "0:/deltav.log".
+  }
   return lexicon("stageMass", stageMass, "stageISP", stageISP, "engineStages", engineStages, "stagingList", stagingList).
 }
 
